@@ -7,7 +7,6 @@
   
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
-    // Миттєвий сигнал Telegram про готовність інтерфейсу
     try {
       if (window.Telegram && window.Telegram.WebApp) {
         window.Telegram.WebApp.ready();
@@ -177,29 +176,22 @@
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
 
   function getTaskId() {
-    // 1. Офіційний Telegram WebApp параметр
     try {
-      if (window.Telegram && window.Telegram.WebApp) {
-        if (window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.start_param) {
-          return String(window.Telegram.WebApp.initDataUnsafe.start_param).trim();
-        }
+      if (window.Telegram?.WebApp?.initDataUnsafe?.start_param) {
+        return String(window.Telegram.WebApp.initDataUnsafe.start_param).trim();
       }
     } catch (e) {}
 
-    // 2. Звичайні параметри пошуку в URL (?task=... або ?startapp=...)
     const urlParams = new URLSearchParams(window.location.search);
     let tid = urlParams.get('task') || urlParams.get('startapp') || urlParams.get('start_param');
     if (tid) return tid.trim();
 
-    // 3. Розбір хешу URL (куди Telegram часто вкладає tgWebAppStartParam)
     if (window.location.hash) {
       const hash = window.location.hash.substring(1);
       const hashParams = new URLSearchParams(hash);
-      
       let p = hashParams.get('tgWebAppStartParam') || hashParams.get('startapp') || hashParams.get('start_param');
       if (p) return decodeURIComponent(p).trim();
 
-      // Якщо параметри всередині tgWebAppData
       const webAppData = hashParams.get('tgWebAppData');
       if (webAppData) {
         const inner = new URLSearchParams(webAppData);
@@ -208,7 +200,6 @@
       }
     }
 
-    // 4. Прямий пошук регулярним виразом у всьому адресному рядку
     const fullMatch = window.location.href.match(/(?:startapp|start_param|tgWebAppStartParam)=([^&#]+)/i);
     if (fullMatch && fullMatch[1]) {
       return decodeURIComponent(fullMatch[1]).trim();
@@ -345,6 +336,12 @@
   function renderForm(task) {
     const container = document.getElementById('form-container');
     const type = (task.task_type || '').trim();
+    const storageKey = `saved_ans_${task.task_id}`;
+    const savedDataRaw = localStorage.getItem(storageKey);
+    let savedData = null;
+    try {
+      if (savedDataRaw) savedData = JSON.parse(savedDataRaw);
+    } catch (e) {}
 
     if (type === 'matching') {
       container.innerHTML = `
@@ -375,8 +372,17 @@
         });
       });
 
+      // Якщо учень уже відповідав раніше — відновлюємо вибір
+      if (savedData && savedData.type === 'matching') {
+        if (savedData.val1) document.getElementById('match-1').value = savedData.val1;
+        if (savedData.val2) document.getElementById('match-2').value = savedData.val2;
+        if (savedData.val3) document.getElementById('match-3').value = savedData.val3;
+        updateDisabledOptions();
+        checkMatching(task.correct_answer, task.explanation, task.task_id, false);
+      }
+
       document.getElementById('btn-check').addEventListener('click', () => {
-        checkMatching(task.correct_answer, task.explanation);
+        checkMatching(task.correct_answer, task.explanation, task.task_id, true);
       });
     } else {
       container.innerHTML = `
@@ -390,8 +396,14 @@
         inputEl.style.borderColor = '#ddd';
       });
 
+      // Якщо учень уже відповідав раніше — відновлюємо текст
+      if (savedData && savedData.type === 'text' && savedData.value) {
+        inputEl.value = savedData.value;
+        checkText(task.correct_answer, task.explanation, task.task_id, false);
+      }
+
       document.getElementById('btn-check').addEventListener('click', () => {
-        checkText(task.correct_answer, task.explanation);
+        checkText(task.correct_answer, task.explanation, task.task_id, true);
       });
     }
   }
@@ -409,18 +421,28 @@
     return (str || '').toString().toLowerCase().replace(/[\s\-_,.:;]/g, '').trim();
   }
 
-  function checkText(correctAnswersRaw, explanation) {
+  function checkText(correctAnswersRaw, explanation, taskId, triggerHaptic) {
     const inputEl = document.getElementById('text-answer');
-    const cleanUser = cleanString(inputEl.value);
+    const val = inputEl.value;
+    const cleanUser = cleanString(val);
     const validList = (correctAnswersRaw || '').split(';').map(cleanString);
 
     const isCorrect = validList.includes(cleanUser);
     inputEl.style.borderColor = isCorrect ? 'var(--success)' : 'var(--error)';
 
+    // Зберігаємо відповідь у localStorage
+    if (taskId && val) {
+      localStorage.setItem(`saved_ans_${taskId}`, JSON.stringify({
+        type: 'text',
+        value: val
+      }));
+    }
+
     displayResult(
       isCorrect ? 'success' : 'error',
       isCorrect ? 'Чудово! Відповідь правильна 🎉' : 'Неправильно. Спробуйте ще раз!',
-      explanation
+      explanation,
+      triggerHaptic
     );
   }
 
@@ -430,7 +452,7 @@
     return m ? normalizeLetter(m[1]) : '';
   }
 
-  function checkMatching(correctPattern, explanation) {
+  function checkMatching(correctPattern, explanation, taskId, triggerHaptic) {
     const el1 = document.getElementById('match-1');
     const el2 = document.getElementById('match-2');
     const el3 = document.getElementById('match-3');
@@ -440,13 +462,23 @@
     const m3 = normalizeLetter(el3.value);
 
     if (!m1 || !m2 || !m3) {
-      alert("Будь ласка, оберіть варіанти для всіх трьох пунктів.");
+      if (triggerHaptic) alert("Будь ласка, оберіть варіанти для всіх трьох пунктів.");
       return;
     }
 
     if (m1 === m2 || m1 === m3 || m2 === m3) {
-      alert("Усі три варіанти відповіді мають бути різними!");
+      if (triggerHaptic) alert("Усі три варіанти відповіді мають бути різними!");
       return;
+    }
+
+    // Зберігаємо комбінацію в localStorage
+    if (taskId) {
+      localStorage.setItem(`saved_ans_${taskId}`, JSON.stringify({
+        type: 'matching',
+        val1: el1.value,
+        val2: el2.value,
+        val3: el3.value
+      }));
     }
 
     const raw = (correctPattern || '').trim();
@@ -478,15 +510,15 @@
     let score = (is1Correct ? 1 : 0) + (is2Correct ? 1 : 0) + (is3Correct ? 1 : 0);
 
     if (score === 3) {
-      displayResult('success', 'Чудово! Правильно: 3/3 🎉', explanation);
+      displayResult('success', 'Чудово! Правильно: 3/3 🎉', explanation, triggerHaptic);
     } else if (score > 0) {
-      displayResult('warning', `Частково правильно: ${score}/3. Спробуйте знайти помилку!`, explanation);
+      displayResult('warning', `Частково правильно: ${score}/3. Спробуйте знайти помилку!`, explanation, triggerHaptic);
     } else {
-      displayResult('error', 'Правильних відповідей: 0/3. Спробуйте ще раз!', explanation);
+      displayResult('error', 'Правильних відповідей: 0/3. Спробуйте ще раз!', explanation, triggerHaptic);
     }
   }
 
-  function displayResult(status, text, explanation) {
+  function displayResult(status, text, explanation, triggerHaptic = true) {
     const box = document.getElementById('result-box');
     box.style.display = 'block';
 
@@ -494,15 +526,15 @@
     if (status === 'success') {
       box.className = 'result-success';
       box.innerHTML = `<strong>${text}</strong>${explanation ? `<br><br>${explanation}` : ''}`;
-      if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+      if (triggerHaptic && tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
     } else if (status === 'warning') {
       box.className = 'result-warning';
       box.innerHTML = `<strong>${text}</strong>${explanation ? `<br><br>${explanation}` : ''}`;
-      if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+      if (triggerHaptic && tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
     } else {
       box.className = 'result-error';
       box.innerHTML = `<strong>${text}</strong>${explanation ? `<br><br>${explanation}` : ''}`;
-      if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+      if (triggerHaptic && tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
     }
   }
 
