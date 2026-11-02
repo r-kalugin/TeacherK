@@ -88,6 +88,46 @@
       font-weight: bold;
       cursor: not-allowed;
     }
+    
+    /* Одиночний вибір (single choice) */
+    .single-options-grid {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+    }
+    .single-btn {
+      flex: 1;
+      padding: 12px 0;
+      font-size: 16px;
+      font-weight: 600;
+      background: var(--card-bg);
+      border: 1.5px solid #ddd;
+      border-radius: 10px;
+      color: var(--text);
+      cursor: pointer;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    .single-btn.selected {
+      border-color: var(--btn);
+      background-color: rgba(36, 129, 204, 0.12);
+      color: var(--btn);
+    }
+    .single-btn.single-correct {
+      border-color: var(--success) !important;
+      background-color: rgba(40, 167, 69, 0.15) !important;
+      color: var(--success) !important;
+      cursor: not-allowed;
+    }
+    .single-btn.single-incorrect {
+      border-color: var(--error) !important;
+      background-color: rgba(220, 53, 69, 0.12) !important;
+      color: var(--error) !important;
+    }
+
+    /* Відповідності (matching) */
     .matching-row {
       display: flex;
       align-items: center;
@@ -122,6 +162,7 @@
       color: var(--error) !important;
       font-weight: bold;
     }
+
     button.submit-btn {
       width: 100%;
       padding: 14px;
@@ -213,6 +254,7 @@
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
   let lockedCorrectLetters = [];
   let currentTask = null;
+  let selectedSingleChoice = null;
 
   function saveUserAnswer(taskId, dataObj) {
     const raw = JSON.stringify(dataObj);
@@ -464,6 +506,7 @@
     if (!currentTask) return;
     clearUserAnswer(currentTask.task_id);
     lockedCorrectLetters = [];
+    selectedSingleChoice = null;
 
     const resultBox = document.getElementById('result-box');
     const btnResetFull = document.getElementById('btn-reset-full');
@@ -484,6 +527,14 @@
         }
       });
       updateDisabledOptions();
+    } else if (currentTask.task_type === 'single' || currentTask.task_type === 'choice') {
+      ['А', 'Б', 'В', 'Г', 'Д'].forEach(l => {
+        const btn = document.getElementById(`opt-${l}`);
+        if (btn) {
+          btn.className = 'single-btn';
+          btn.disabled = false;
+        }
+      });
     } else {
       const inp = document.getElementById('text-answer');
       if (inp) {
@@ -530,7 +581,6 @@
         el.addEventListener('change', () => {
           if (!el.disabled) {
             el.className = 'matching-select';
-            // Якщо користувач змінює варіант після перевірки, повертаємо кнопку перевірки
             const btnCheck = document.getElementById('btn-check');
             const btnRetry = document.getElementById('btn-retry');
             const resultBox = document.getElementById('result-box');
@@ -562,6 +612,45 @@
           if (s3 && saved.val3) s3.value = saved.val3;
           updateDisabledOptions();
           checkMatching(task.correct_answer, task.explanation, task.task_id, false);
+        }
+      });
+    } else if (type === 'single' || type === 'choice') {
+      container.innerHTML = `
+        <div style="margin-bottom: 8px; font-size: 14px; color: var(--hint);">Оберіть один правильний варіант:</div>
+        <div class="single-options-grid">
+          ${['А', 'Б', 'В', 'Г', 'Д'].map(letter => `
+            <button class="single-btn" id="opt-${letter}" type="button">${letter}</button>
+          `).join('')}
+        </div>
+        <button class="submit-btn" id="btn-check">Перевірити</button>
+      `;
+
+      ['А', 'Б', 'В', 'Г', 'Д'].forEach(letter => {
+        const btn = document.getElementById(`opt-${letter}`);
+        btn.addEventListener('click', () => {
+          if (btn.disabled) return;
+          selectedSingleChoice = letter;
+          ['А', 'Б', 'В', 'Г', 'Д'].forEach(l => {
+            const b = document.getElementById(`opt-${l}`);
+            if (!b.classList.contains('single-correct')) {
+              b.className = (l === letter) ? 'single-btn selected' : 'single-btn';
+            }
+          });
+          const resultBox = document.getElementById('result-box');
+          if (resultBox) resultBox.style.display = 'none';
+        });
+      });
+
+      document.getElementById('btn-check').addEventListener('click', () => {
+        checkSingle(task.correct_answer, task.explanation, task.task_id, true);
+      });
+
+      loadUserAnswer(task.task_id, (saved) => {
+        if (saved && saved.type === 'single' && saved.value) {
+          selectedSingleChoice = saved.value;
+          const b = document.getElementById(`opt-${saved.value}`);
+          if (b) b.classList.add('selected');
+          checkSingle(task.correct_answer, task.explanation, task.task_id, false);
         }
       });
     } else {
@@ -603,6 +692,58 @@
 
   function cleanString(str) {
     return (str || '').toString().toLowerCase().replace(/[\s\-_,.:;]/g, '').trim();
+  }
+
+  function checkSingle(correctAnswerRaw, explanation, taskId, triggerHaptic) {
+    const btnCheck = document.getElementById('btn-check');
+    const btnResetFull = document.getElementById('btn-reset-full');
+
+    if (!selectedSingleChoice) {
+      if (triggerHaptic) alert("Будь ласка, оберіть варіант відповіді.");
+      return;
+    }
+
+    const userAns = normalizeLetter(selectedSingleChoice);
+    const correctAns = normalizeLetter(correctAnswerRaw.replace(/[^А-ЯA-ZІЇЄҐа-яa-zіїєґ]/g, ''));
+    const isCorrect = (userAns === correctAns);
+
+    const activeBtn = document.getElementById(`opt-${selectedSingleChoice}`);
+
+    if (isCorrect) {
+      ['А', 'Б', 'В', 'Г', 'Д'].forEach(l => {
+        const b = document.getElementById(`opt-${l}`);
+        if (b) {
+          b.disabled = true;
+          if (l === userAns) {
+            b.className = 'single-btn single-correct';
+          } else {
+            b.className = 'single-btn';
+            b.style.opacity = '0.4';
+          }
+        }
+      });
+      if (btnCheck) btnCheck.style.display = 'none';
+      if (btnResetFull) btnResetFull.style.display = 'block';
+    } else {
+      if (activeBtn) {
+        activeBtn.className = 'single-btn single-incorrect';
+      }
+      if (btnResetFull) btnResetFull.style.display = 'none';
+    }
+
+    if (taskId) {
+      saveUserAnswer(taskId, {
+        type: 'single',
+        value: selectedSingleChoice
+      });
+    }
+
+    displayResult(
+      isCorrect ? 'success' : 'error',
+      isCorrect ? 'Саме так! Відповідь правильна 🎉' : 'Ця відповідь неправильна. Спробуйте ще раз!',
+      explanation,
+      triggerHaptic
+    );
   }
 
   function checkText(correctAnswersRaw, explanation, taskId, triggerHaptic) {
