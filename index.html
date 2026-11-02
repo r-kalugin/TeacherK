@@ -768,8 +768,8 @@
     }
 
     const successMsg = attemptsCount === 1 
-      ? 'Бездоганно! Відповідь правильна з 1-ї спроби 🎉' 
-      : `Саме так! Відповідь правильна 🎉 <span class="attempts-badge">Спроб використано: ${attemptsCount}</span>`;
+      ? 'Бездоганно! Правильну відповідь обрано з 1-ї спроби!' 
+      : `Саме так! Відповідь правильна 🎉 <span class="attempts-badge">Використано спроб: ${attemptsCount}</span>`;
 
     displayResult(
       isCorrect ? 'success' : 'error',
@@ -809,8 +809,8 @@
     }
 
     const successMsg = attemptsCount === 1 
-      ? 'Бездоганно! Відповідь правильна з 1-ї спроби 🎉' 
-      : `Саме так! Відповідь правильна 🎉 <span class="attempts-badge">Спроб використано: ${attemptsCount}</span>`;
+      ? 'Бездоганно! Правильну відповідь уведено з першої спроби!' 
+      : `Саме так! Відповідь правильна 🎉 <span class="attempts-badge">Використано спроб: ${attemptsCount}</span>`;
 
     displayResult(
       isCorrect ? 'success' : 'error',
@@ -904,8 +904,8 @@
       if (btnResetFull) btnResetFull.style.display = 'block';
 
       const successMsg = attemptsCount === 1 
-        ? 'Бездоганно! Правильно: 3/3 з 1-ї спроби 🎉' 
-        : `Чудово! Правильно: 3/3 🎉 <span class="attempts-badge">Спроб використано: ${attemptsCount}</span>`;
+        ? 'Бездоганно! Правильні відповідності встановлено з 1-ї спроби!' 
+        : `Саме так! Правильно: 3/3 🎉 <span class="attempts-badge">Використано спроб: ${attemptsCount}</span>`;
 
       displayResult('success', successMsg, explanation, triggerHaptic);
     } else {
