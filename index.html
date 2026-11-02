@@ -81,6 +81,13 @@
     .input-field:focus {
       border-color: var(--btn);
     }
+    .input-locked {
+      background-color: rgba(40, 167, 69, 0.08) !important;
+      border-color: var(--success) !important;
+      color: var(--success) !important;
+      font-weight: bold;
+      cursor: not-allowed;
+    }
     .matching-row {
       display: flex;
       align-items: center;
@@ -107,6 +114,7 @@
       background-color: rgba(40, 167, 69, 0.12) !important;
       color: var(--success) !important;
       font-weight: bold;
+      cursor: not-allowed;
     }
     .select-incorrect {
       border-color: var(--error) !important;
@@ -459,7 +467,6 @@
         resetIncorrectMatching();
       });
 
-      // Безпечне асинхронне відновлення збереженої відповіді
       loadUserAnswer(task.task_id, (saved) => {
         if (saved && saved.type === 'matching') {
           const s1 = document.getElementById('match-1');
@@ -488,7 +495,6 @@
         checkText(task.correct_answer, task.explanation, task.task_id, true);
       });
 
-      // Безпечне асинхронне відновлення збереженої відповіді
       loadUserAnswer(task.task_id, (saved) => {
         if (saved && saved.type === 'text' && saved.value !== undefined) {
           const inp = document.getElementById('text-answer');
@@ -516,13 +522,21 @@
 
   function checkText(correctAnswersRaw, explanation, taskId, triggerHaptic) {
     const inputEl = document.getElementById('text-answer');
+    const btnCheck = document.getElementById('btn-check');
     if (!inputEl) return;
     const val = inputEl.value;
     const cleanUser = cleanString(val);
     const validList = (correctAnswersRaw || '').split(';').map(cleanString);
 
     const isCorrect = validList.includes(cleanUser);
-    inputEl.style.borderColor = isCorrect ? 'var(--success)' : 'var(--error)';
+
+    if (isCorrect) {
+      inputEl.className = 'input-field input-locked';
+      inputEl.disabled = true; // Блокуємо повторне введення
+      if (btnCheck) btnCheck.style.display = 'none'; // Ховаємо кнопку перевірки
+    } else {
+      inputEl.style.borderColor = 'var(--error)';
+    }
 
     if (taskId && val) {
       saveUserAnswer(taskId, {
@@ -602,7 +616,7 @@
     const applyStatus = (el, isCorrect) => {
       if (isCorrect) {
         el.className = 'matching-select select-correct';
-        el.disabled = true;
+        el.disabled = true; // Завжди блокуємо правильний вибір
       } else {
         el.className = 'matching-select select-incorrect';
         el.disabled = false;
@@ -616,9 +630,8 @@
     let score = (is1Correct ? 1 : 0) + (is2Correct ? 1 : 0) + (is3Correct ? 1 : 0);
 
     if (score === 3) {
-      btnCheck.style.display = 'block';
-      btnCheck.disabled = true;
-      btnCheck.innerText = 'Виконано ✓';
+      // При правильній трійці: ховаємо обидві кнопки і блокуємо всі варіанти
+      btnCheck.style.display = 'none';
       btnRetry.style.display = 'none';
       displayResult('success', 'Чудово! Правильно: 3/3 🎉', explanation, triggerHaptic);
     } else {
