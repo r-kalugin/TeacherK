@@ -40,7 +40,19 @@
       margin-top: 0;
       font-size: 18px;
       text-align: center;
+      margin-bottom: 14px;
+    }
+    .task-image-container {
       margin-bottom: 16px;
+      text-align: center;
+      display: none;
+    }
+    .task-image {
+      max-width: 100%;
+      height: auto;
+      border-radius: 10px;
+      border: 1px solid #e1e4e8;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
     }
     .input-field {
       width: 100%;
@@ -137,6 +149,11 @@
 <div class="container">
   <div class="card">
     <h2 id="task-title">Завантаження завдання...</h2>
+    
+    <div id="image-container" class="task-image-container">
+      <img id="task-img" class="task-image" alt="Умова задачі" />
+    </div>
+
     <div id="loader" class="loader">Зчитування даних із таблиці...</div>
     <div id="form-container" style="display: none;"></div>
     <div id="result-box"></div>
@@ -144,7 +161,6 @@
 </div>
 
 <script>
-  // Повідомляємо Telegram негайно, щоб прибрати білий екран очікування
   if (window.Telegram && window.Telegram.WebApp) {
     try {
       window.Telegram.WebApp.ready();
@@ -157,25 +173,21 @@
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
 
   function getTaskId() {
-    // 1. Звичайний GET-параметр ?task=...
     const urlParams = new URLSearchParams(window.location.search);
     let taskId = urlParams.get('task');
     if (taskId) return taskId.trim();
 
-    // 2. Офіційне поле Telegram WebApp
     const tg = window.Telegram?.WebApp;
     if (tg?.initDataUnsafe?.start_param) {
       return String(tg.initDataUnsafe.start_param).trim();
     }
 
-    // 3. Параметр з хешу (у деяких клієнтах Telegram WebApp)
     if (window.location.hash) {
       const hash = window.location.hash.substring(1);
       const hashParams = new URLSearchParams(hash);
       const startParam = hashParams.get('tgWebAppStartParam');
       if (startParam) return decodeURIComponent(startParam).trim();
 
-      // Додатковий пошук всередині tgWebAppData
       const webAppData = hashParams.get('tgWebAppData');
       if (webAppData) {
         const innerParams = new URLSearchParams(webAppData);
@@ -183,7 +195,6 @@
         if (innerStart) return decodeURIComponent(innerStart).trim();
       }
     }
-
     return null;
   }
 
@@ -211,15 +222,31 @@
     return result;
   }
 
+  function formatDriveUrl(url) {
+    if (!url) return '';
+    url = url.trim();
+    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
+    }
+    const idMatch = url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (idMatch && idMatch[1] && url.includes('drive.google.com')) {
+      return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w1000`;
+    }
+    return url;
+  }
+
   async function init() {
     const taskId = getTaskId();
     const titleEl = document.getElementById('task-title');
     const loaderEl = document.getElementById('loader');
     const formContainer = document.getElementById('form-container');
+    const imgContainer = document.getElementById('image-container');
+    const imgEl = document.getElementById('task-img');
 
     if (!taskId) {
       titleEl.innerText = "Помилка";
-      loaderEl.innerText = "Не вказано номер завдання. Відкрийте посилання з каналу ще раз.";
+      loaderEl.innerText = "Не вказано номер завдання (?task=...).";
       return;
     }
 
@@ -240,7 +267,8 @@
             task_id: idVal,
             task_type: (cols[1] || 'text').replace(/^"|"$/g, '').trim().toLowerCase(),
             correct_answer: cols[2] ? cols[2].replace(/^"|"$/g, '').trim() : '',
-            explanation: cols[3] ? cols[3].replace(/^"|"$/g, '').trim() : ''
+            explanation: cols[3] ? cols[3].replace(/^"|"$/g, '').trim() : '',
+            image_url: cols[4] ? cols[4].replace(/^"|"$/g, '').trim() : ''
           };
           break;
         }
@@ -261,10 +289,22 @@
       }
       titleEl.innerText = `📚 Задача дня_${displayId}`;
 
+      const candidateUrl = formatDriveUrl(task.image_url) || `tasks/${task.task_id}.png`;
+      imgEl.onload = () => { imgContainer.style.display = 'block'; };
+      imgEl.onerror = () => {
+        if (!task.image_url && !imgEl.dataset.triedJpg) {
+          imgEl.dataset.triedJpg = 'true';
+          imgEl.src = `tasks/${task.task_id}.jpg`;
+        } else {
+          imgContainer.style.display = 'none';
+        }
+      };
+      imgEl.src = candidateUrl;
+
       renderForm(task);
     } catch (e) {
       titleEl.innerText = "Помилка зв'язку";
-      loaderEl.innerText = "Не вдалося завантажити дані таблиці. Спробуйте пізніше.";
+      loaderEl.innerText = "Не вдалося завантажити дані таблиці. Перевірте публікацію в інтернеті.";
     }
   }
 
@@ -444,7 +484,6 @@
     }
   }
 
-  // Запуск ініціалізації
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
