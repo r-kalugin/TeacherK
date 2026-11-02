@@ -90,7 +90,6 @@
       color: var(--error) !important;
       font-weight: bold;
     }
-
     button.submit-btn {
       width: 100%;
       padding: 14px;
@@ -145,21 +144,47 @@
 </div>
 
 <script>
-  const tg = window.Telegram?.WebApp;
-  if (tg) {
-    tg.ready();
-    tg.expand();
+  // Повідомляємо Telegram негайно, щоб прибрати білий екран очікування
+  if (window.Telegram && window.Telegram.WebApp) {
+    try {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
 
   function getTaskId() {
+    // 1. Звичайний GET-параметр ?task=...
     const urlParams = new URLSearchParams(window.location.search);
     let taskId = urlParams.get('task');
-    if (!taskId && tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
-      taskId = tg.initDataUnsafe.start_param;
+    if (taskId) return taskId.trim();
+
+    // 2. Офіційне поле Telegram WebApp
+    const tg = window.Telegram?.WebApp;
+    if (tg?.initDataUnsafe?.start_param) {
+      return String(tg.initDataUnsafe.start_param).trim();
     }
-    return taskId ? taskId.trim() : null;
+
+    // 3. Параметр з хешу (у деяких клієнтах Telegram WebApp)
+    if (window.location.hash) {
+      const hash = window.location.hash.substring(1);
+      const hashParams = new URLSearchParams(hash);
+      const startParam = hashParams.get('tgWebAppStartParam');
+      if (startParam) return decodeURIComponent(startParam).trim();
+
+      // Додатковий пошук всередині tgWebAppData
+      const webAppData = hashParams.get('tgWebAppData');
+      if (webAppData) {
+        const innerParams = new URLSearchParams(webAppData);
+        const innerStart = innerParams.get('start_param');
+        if (innerStart) return decodeURIComponent(innerStart).trim();
+      }
+    }
+
+    return null;
   }
 
   function parseCSVLine(line) {
@@ -194,7 +219,7 @@
 
     if (!taskId) {
       titleEl.innerText = "Помилка";
-      loaderEl.innerText = "Не вказано номер завдання (?task=...).";
+      loaderEl.innerText = "Не вказано номер завдання. Відкрийте посилання з каналу ще раз.";
       return;
     }
 
@@ -239,7 +264,7 @@
       renderForm(task);
     } catch (e) {
       titleEl.innerText = "Помилка зв'язку";
-      loaderEl.innerText = "Не вдалося завантажити дані таблиці. Перевірте публікацію в інтернеті.";
+      loaderEl.innerText = "Не вдалося завантажити дані таблиці. Спробуйте пізніше.";
     }
   }
 
@@ -250,7 +275,6 @@
     selects.forEach(select => {
       Array.from(select.options).forEach(opt => {
         if (!opt.value) return;
-        // Забороняємо вибір літери, якщо вона вже обрана в іншому списку
         opt.disabled = selectedValues.includes(opt.value) && select.value !== opt.value;
       });
     });
@@ -404,22 +428,28 @@
     const box = document.getElementById('result-box');
     box.style.display = 'block';
 
+    const tg = window.Telegram?.WebApp;
     if (status === 'success') {
       box.className = 'result-success';
       box.innerHTML = `<strong>${text}</strong>${explanation ? `<br><br>${explanation}` : ''}`;
-      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+      if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
     } else if (status === 'warning') {
       box.className = 'result-warning';
       box.innerHTML = `<strong>${text}</strong>${explanation ? `<br><br>${explanation}` : ''}`;
-      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+      if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
     } else {
       box.className = 'result-error';
       box.innerHTML = `<strong>${text}</strong>${explanation ? `<br><br>${explanation}` : ''}`;
-      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+      if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
     }
   }
 
-  window.onload = init;
+  // Запуск ініціалізації
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 </script>
 </body>
 </html>
