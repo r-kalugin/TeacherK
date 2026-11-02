@@ -128,34 +128,15 @@
     tg.expand();
   }
 
-  // ID таблиці та завантаження через публічний CSV-експорт
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUl-FmMULUUklqaUtP7Fg';
-  const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
 
-  // Отримання task_id із URL або Telegram start_param
   function getTaskId() {
     const urlParams = new URLSearchParams(window.location.search);
     let taskId = urlParams.get('task');
     if (!taskId && tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
       taskId = tg.initDataUnsafe.start_param;
     }
-    return taskId;
-  }
-
-  function parseCSV(text) {
-    const lines = text.trim().split('\n');
-    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
-    return lines.slice(1).map(line => {
-      // Розбір значень з урахуванням лапок
-      const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
-      const obj = {};
-      headers.forEach((h, i) => {
-        let val = values[i] ? values[i].trim() : '';
-        val = val.replace(/^"|"$/g, '').replace(/""/g, '"');
-        obj[h] = val;
-      });
-      return obj;
-    });
+    return taskId ? taskId.trim() : null;
   }
 
   async function init() {
@@ -171,10 +152,29 @@
     }
 
     try {
-      const res = await fetch(SHEET_URL);
-      const csvText = await res.text();
-      const rows = parseCSV(csvText);
-      const task = rows.find(r => r.task_id === taskId);
+      // Отримуємо відповідь безпосередньо через Google Visualization JSON API
+      const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`);
+      const rawText = await res.text();
+      
+      const jsonString = rawText.substring(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1);
+      const data = JSON.parse(jsonString);
+      
+      const rows = data.table.rows;
+      let task = null;
+
+      for (let r of rows) {
+        if (!r.c) continue;
+        const idVal = r.c[0] ? String(r.c[0].v !== undefined ? r.c[0].v : (r.c[0].f || '')).trim() : '';
+        if (idVal === taskId) {
+          task = {
+            task_id: idVal,
+            task_type: r.c[1] ? String(r.c[1].v || '').trim() : 'text',
+            correct_answer: r.c[2] ? String(r.c[2].v !== undefined ? r.c[2].v : (r.c[2].f || '')).trim() : '',
+            explanation: r.c[3] ? String(r.c[3].v || '').trim() : ''
+          };
+          break;
+        }
+      }
 
       if (!task) {
         titleEl.innerText = "Завдання не знайдено";
@@ -227,7 +227,7 @@
   }
 
   function cleanString(str) {
-    return (str || '').toString().toLowerCase().replace(/[\s\-_]/g, '').trim();
+    return (str || '').toString().toLowerCase().replace(/[\s\-_,.:;]/g, '').trim();
   }
 
   window.checkText = function(correctAnswersRaw, encodedExplanation) {
@@ -262,11 +262,11 @@
 
     if (isCorrect) {
       box.className = 'result-success';
-      box.innerHTML = `<strong>Чудово! Відповідь правильна 🎉</strong><br>${explanation}`;
+      box.innerHTML = `<strong>Чудово! Відповідь правильна 🎉</strong>${explanation ? `<br><br>${explanation}` : ''}`;
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
     } else {
       box.className = 'result-error';
-      box.innerHTML = `<strong>Неправильно. Спробуйте ще раз!</strong><br>${explanation}`;
+      box.innerHTML = `<strong>Неправильно. Спробуйте ще раз!</strong>${explanation ? `<br><br>${explanation}` : ''}`;
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
     }
   }
