@@ -260,10 +260,25 @@
 
 <script>
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
+  const SHEET_GID = '121652371'; // Аркуш AppExport із захешованими відповідями
+  const SALT = "TeacherK_Secret_2026_"; // Той самий секретний ключ, що й у скрипті таблиці
+
   let lockedCorrectLetters = [];
   let currentTask = null;
   let selectedSingleChoice = null;
-  let attemptsCount = 0; // Лічильник спроб для активного завдання
+  let attemptsCount = 0;
+
+  async function sha256(str) {
+    const buffer = new TextEncoder().encode(str);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function computeHash(taskId, rawValue) {
+    const raw = (taskId || "").trim() + "_" + (rawValue || "").trim() + "_" + SALT;
+    return await sha256(raw);
+  }
 
   function saveUserAnswer(taskId, dataObj) {
     const raw = JSON.stringify(dataObj);
@@ -412,7 +427,7 @@
     loaderEl.innerText = `Завантаження завдання ${taskId}...`;
 
     try {
-      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
+      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error("HTTP " + response.status);
       const csvText = await response.text();
@@ -427,7 +442,7 @@
           task = {
             task_id: idVal,
             task_type: (cols[1] || 'text').replace(/^"|"$/g, '').trim().toLowerCase(),
-            correct_answer: cols[2] ? cols[2].replace(/^"|"$/g, '').trim() : '',
+            answer_hash: cols[2] ? cols[2].replace(/^"|"$/g, '').trim() : '',
             explanation: cols[3] ? cols[3].replace(/^"|"$/g, '').trim() : '',
             image_url: cols[4] ? cols[4].replace(/^"|"$/g, '').trim() : ''
           };
@@ -516,7 +531,7 @@
     clearUserAnswer(currentTask.task_id);
     lockedCorrectLetters = [];
     selectedSingleChoice = null;
-    attemptsCount = 0; // Скидаємо лічильник
+    attemptsCount = 0;
 
     const resultBox = document.getElementById('result-box');
     const btnResetFull = document.getElementById('btn-reset-full');
@@ -567,7 +582,7 @@
     if (type === 'matching') {
       container.innerHTML = `
         <div style="margin-bottom: 14px; font-size: 14px; color: var(--hint);">
-          Установіть відповідність для кожного пункту:
+          Установіть відповідності:
         </div>
         ${[1, 2, 3].map(num => `
           <div class="matching-row">
@@ -606,7 +621,7 @@
 
       document.getElementById('btn-check').addEventListener('click', () => {
         attemptsCount++;
-        checkMatching(task.correct_answer, task.explanation, task.task_id, true);
+        checkMatching(task.answer_hash, task.explanation, task.task_id, true);
       });
 
       document.getElementById('btn-retry').addEventListener('click', () => {
@@ -623,7 +638,7 @@
           if (s2 && saved.val2) s2.value = saved.val2;
           if (s3 && saved.val3) s3.value = saved.val3;
           updateDisabledOptions();
-          checkMatching(task.correct_answer, task.explanation, task.task_id, false);
+          checkMatching(task.answer_hash, task.explanation, task.task_id, false);
         }
       });
     } else if (type === 'single' || type === 'choice') {
@@ -660,7 +675,7 @@
 
       document.getElementById('btn-check').addEventListener('click', () => {
         attemptsCount++;
-        checkSingle(task.correct_answer, task.explanation, task.task_id, true);
+        checkSingle(task.answer_hash, task.explanation, task.task_id, true);
       });
 
       loadUserAnswer(task.task_id, (saved) => {
@@ -669,7 +684,7 @@
           selectedSingleChoice = saved.value;
           const b = document.getElementById(`opt-${saved.value}`);
           if (b) b.classList.add('selected');
-          checkSingle(task.correct_answer, task.explanation, task.task_id, false);
+          checkSingle(task.answer_hash, task.explanation, task.task_id, false);
         }
       });
     } else {
@@ -686,7 +701,7 @@
 
       document.getElementById('btn-check').addEventListener('click', () => {
         attemptsCount++;
-        checkText(task.correct_answer, task.explanation, task.task_id, true);
+        checkText(task.answer_hash, task.explanation, task.task_id, true);
       });
 
       loadUserAnswer(task.task_id, (saved) => {
@@ -695,7 +710,7 @@
           const inp = document.getElementById('text-answer');
           if (inp) {
             inp.value = saved.value;
-            checkText(task.correct_answer, task.explanation, task.task_id, false);
+            checkText(task.answer_hash, task.explanation, task.task_id, false);
           }
         }
       });
@@ -715,13 +730,13 @@
     return (str || '')
       .toString()
       .toLowerCase()
-      .replace(/[–—−]/g, '-') // нормалізує всі види тире до мінуса
-      .replace(/,/g, '.')      // нормалізує коми до крапки
-      .replace(/\s+/g, '')     // прибирає пробіли
+      .replace(/[–—−]/g, '-')
+      .replace(/,/g, '.')
+      .replace(/\s+/g, '')
       .trim();
   }
 
-  function checkSingle(correctAnswerRaw, explanation, taskId, triggerHaptic) {
+  async function checkSingle(correctHash, explanation, taskId, triggerHaptic) {
     const btnCheck = document.getElementById('btn-check');
     const btnResetFull = document.getElementById('btn-reset-full');
 
@@ -731,8 +746,8 @@
     }
 
     const userAns = normalizeLetter(selectedSingleChoice);
-    const correctAns = normalizeLetter(correctAnswerRaw.replace(/[^А-ЯA-ZІЇЄҐа-яa-zіїєґ]/g, ''));
-    const isCorrect = (userAns === correctAns);
+    const userHash = await computeHash(taskId, userAns);
+    const isCorrect = (userHash === correctHash);
 
     const activeBtn = document.getElementById(`opt-${selectedSingleChoice}`);
 
@@ -779,16 +794,16 @@
     );
   }
 
-  function checkText(correctAnswersRaw, explanation, taskId, triggerHaptic) {
+  async function checkText(correctHash, explanation, taskId, triggerHaptic) {
     const inputEl = document.getElementById('text-answer');
     const btnCheck = document.getElementById('btn-check');
     const btnResetFull = document.getElementById('btn-reset-full');
     if (!inputEl) return;
     const val = inputEl.value;
     const cleanUser = cleanString(val);
-    const validList = (correctAnswersRaw || '').split(';').map(cleanString);
 
-    const isCorrect = validList.includes(cleanUser);
+    const userHash = await computeHash(taskId, cleanUser);
+    const isCorrect = (userHash === correctHash);
 
     if (isCorrect) {
       inputEl.className = 'input-field input-locked';
@@ -820,13 +835,7 @@
     );
   }
 
-  function extractAnswerFor(pattern, num) {
-    const regex = new RegExp(num + '[\\s\\-–—:=]*([А-ЯA-ZІЇЄҐ])', 'i');
-    const m = pattern.match(regex);
-    return m ? normalizeLetter(m[1]) : '';
-  }
-
-  function checkMatching(correctPattern, explanation, taskId, triggerHaptic) {
+  async function checkMatching(correctHash, explanation, taskId, triggerHaptic) {
     const el1 = document.getElementById('match-1');
     const el2 = document.getElementById('match-2');
     const el3 = document.getElementById('match-3');
@@ -859,46 +868,16 @@
       });
     }
 
-    const raw = (correctPattern || '').trim();
-    let c1 = extractAnswerFor(raw, '1');
-    let c2 = extractAnswerFor(raw, '2');
-    let c3 = extractAnswerFor(raw, '3');
+    // Формуємо рядок вигляду "1-А 2-Б 3-В", як він записаний у вихідній таблиці Admin
+    const combination = `1-${m1} 2-${m2} 3-${m3}`;
+    const userHash = await computeHash(taskId, combination);
+    const isFullMatch = (userHash === correctHash);
 
-    if (!c1 && !c2 && !c3) {
-      const letters = raw.replace(/[^А-ЯA-ZІЇЄҐа-яa-zіїєґ]/g, '');
-      if (letters.length >= 3) {
-        c1 = normalizeLetter(letters[0]);
-        c2 = normalizeLetter(letters[1]);
-        c3 = normalizeLetter(letters[2]);
-      }
-    }
-
-    const is1Correct = (m1 === c1);
-    const is2Correct = (m2 === c2);
-    const is3Correct = (m3 === c3);
-
-    lockedCorrectLetters = [];
-    if (is1Correct) lockedCorrectLetters.push(m1);
-    if (is2Correct) lockedCorrectLetters.push(m2);
-    if (is3Correct) lockedCorrectLetters.push(m3);
-
-    const applyStatus = (el, isCorrect) => {
-      if (isCorrect) {
+    if (isFullMatch) {
+      [el1, el2, el3].forEach(el => {
         el.className = 'matching-select select-correct';
         el.disabled = true;
-      } else {
-        el.className = 'matching-select select-incorrect';
-        el.disabled = false;
-      }
-    };
-
-    applyStatus(el1, is1Correct);
-    applyStatus(el2, is2Correct);
-    applyStatus(el3, is3Correct);
-
-    let score = (is1Correct ? 1 : 0) + (is2Correct ? 1 : 0) + (is3Correct ? 1 : 0);
-
-    if (score === 3) {
+      });
       btnCheck.style.display = 'none';
       btnRetry.style.display = 'none';
       if (btnResetFull) btnResetFull.style.display = 'block';
@@ -909,14 +888,14 @@
 
       displayResult('success', successMsg, explanation, triggerHaptic);
     } else {
+      [el1, el2, el3].forEach(el => {
+        el.className = 'matching-select select-incorrect';
+      });
       btnCheck.style.display = 'none';
       btnRetry.style.display = 'block';
       if (btnResetFull) btnResetFull.style.display = 'none';
-      if (score > 0) {
-        displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
-      } else {
-        displayResult('error', `Правильних відповідей: 0/3. Спробуйте ще раз! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
-      }
+
+      displayResult('error', `Комбінація містить помилки. Спробуйте ще раз! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
     }
 
     updateDisabledOptions();
