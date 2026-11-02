@@ -78,7 +78,6 @@
       transition: all 0.2s ease;
       min-width: 70px;
     }
-    /* Стилі підсвічування окремих списків */
     .select-correct {
       border-color: var(--success) !important;
       background-color: rgba(40, 167, 69, 0.12) !important;
@@ -244,6 +243,19 @@
     }
   }
 
+  function updateDisabledOptions() {
+    const selects = [1, 2, 3].map(n => document.getElementById(`match-${n}`));
+    const selectedValues = selects.map(s => s.value).filter(v => v !== "");
+
+    selects.forEach(select => {
+      Array.from(select.options).forEach(opt => {
+        if (!opt.value) return;
+        // Забороняємо вибір літери, якщо вона вже обрана в іншому списку
+        opt.disabled = selectedValues.includes(opt.value) && select.value !== opt.value;
+      });
+    });
+  }
+
   function renderForm(task) {
     const container = document.getElementById('form-container');
     const type = (task.task_type || '').trim();
@@ -269,11 +281,11 @@
         <button class="submit-btn" id="btn-check">Перевірити</button>
       `;
 
-      // При зміні варіанта знімаємо попередню підсвітку
       [1, 2, 3].forEach(num => {
         const el = document.getElementById(`match-${num}`);
         el.addEventListener('change', () => {
           el.className = 'matching-select';
+          updateDisabledOptions();
         });
       });
 
@@ -346,6 +358,11 @@
       return;
     }
 
+    if (m1 === m2 || m1 === m3 || m2 === m3) {
+      alert("Усі три варіанти відповіді мають бути різними!");
+      return;
+    }
+
     const raw = (correctPattern || '').trim();
     let c1 = extractAnswerFor(raw, '1');
     let c2 = extractAnswerFor(raw, '2');
@@ -360,7 +377,6 @@
       }
     }
 
-    // Підсвічуємо кожен селект окремо зеленим чи червоним
     const applyHighlight = (el, isCorrect) => {
       el.className = 'matching-select ' + (isCorrect ? 'select-correct' : 'select-incorrect');
     };
