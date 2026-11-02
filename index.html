@@ -146,6 +146,22 @@
       border-radius: 10px;
       cursor: pointer;
     }
+    button.reset-full-btn {
+      width: 100%;
+      padding: 11px;
+      margin-top: 14px;
+      font-size: 14px;
+      font-weight: 500;
+      background-color: transparent;
+      color: var(--hint);
+      border: 1px dashed #bbb;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    button.reset-full-btn:active {
+      background-color: rgba(0,0,0,0.04);
+    }
     #result-box {
       margin-top: 16px;
       padding: 12px;
@@ -189,12 +205,14 @@
     <div id="loader" class="loader">Зчитування даних із таблиці...</div>
     <div id="form-container" style="display: none;"></div>
     <div id="result-box"></div>
+    <button class="reset-full-btn" id="btn-reset-full" style="display: none;">🔄 Розв'язати завдання повторно</button>
   </div>
 </div>
 
 <script>
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
   let lockedCorrectLetters = [];
+  let currentTask = null;
 
   function saveUserAnswer(taskId, dataObj) {
     const raw = JSON.stringify(dataObj);
@@ -238,6 +256,20 @@
     } catch (e) {}
 
     callback(localData);
+  }
+
+  function clearUserAnswer(taskId) {
+    try {
+      localStorage.removeItem('saved_ans_' + taskId);
+    } catch (e) {}
+
+    try {
+      const cloud = window.Telegram?.WebApp?.CloudStorage;
+      if (cloud && cloud.removeItem) {
+        const safeKey = ('ans_' + taskId).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 120);
+        cloud.removeItem(safeKey);
+      }
+    } catch (e) {}
   }
 
   function getTaskId() {
@@ -358,6 +390,7 @@
         return;
       }
 
+      currentTask = task;
       loaderEl.style.display = 'none';
       formContainer.style.display = 'block';
 
@@ -378,6 +411,8 @@
         }
       };
       imgEl.src = candidateUrl;
+
+      document.getElementById('btn-reset-full').addEventListener('click', fullResetTask);
 
       renderForm(task);
     } catch (e) {
@@ -423,6 +458,45 @@
     resultBox.style.display = 'none';
     btnRetry.style.display = 'none';
     btnCheck.style.display = 'block';
+  }
+
+  function fullResetTask() {
+    if (!currentTask) return;
+    clearUserAnswer(currentTask.task_id);
+    lockedCorrectLetters = [];
+
+    const resultBox = document.getElementById('result-box');
+    const btnResetFull = document.getElementById('btn-reset-full');
+    const btnCheck = document.getElementById('btn-check');
+    const btnRetry = document.getElementById('btn-retry');
+
+    resultBox.style.display = 'none';
+    btnResetFull.style.display = 'none';
+    if (btnRetry) btnRetry.style.display = 'none';
+
+    if (currentTask.task_type === 'matching') {
+      [1, 2, 3].forEach(num => {
+        const el = document.getElementById(`match-${num}`);
+        if (el) {
+          el.value = "";
+          el.disabled = false;
+          el.className = 'matching-select';
+        }
+      });
+      updateDisabledOptions();
+    } else {
+      const inp = document.getElementById('text-answer');
+      if (inp) {
+        inp.value = "";
+        inp.disabled = false;
+        inp.className = 'input-field';
+        inp.style.borderColor = '#ddd';
+      }
+    }
+
+    if (btnCheck) {
+      btnCheck.style.display = 'block';
+    }
   }
 
   function renderForm(task) {
@@ -523,6 +597,7 @@
   function checkText(correctAnswersRaw, explanation, taskId, triggerHaptic) {
     const inputEl = document.getElementById('text-answer');
     const btnCheck = document.getElementById('btn-check');
+    const btnResetFull = document.getElementById('btn-reset-full');
     if (!inputEl) return;
     const val = inputEl.value;
     const cleanUser = cleanString(val);
@@ -532,10 +607,12 @@
 
     if (isCorrect) {
       inputEl.className = 'input-field input-locked';
-      inputEl.disabled = true; // Блокуємо повторне введення
-      if (btnCheck) btnCheck.style.display = 'none'; // Ховаємо кнопку перевірки
+      inputEl.disabled = true;
+      if (btnCheck) btnCheck.style.display = 'none';
+      if (btnResetFull) btnResetFull.style.display = 'block'; // З'являється лише при повній правильності
     } else {
       inputEl.style.borderColor = 'var(--error)';
+      if (btnResetFull) btnResetFull.style.display = 'none';
     }
 
     if (taskId && val) {
@@ -565,6 +642,7 @@
     const el3 = document.getElementById('match-3');
     const btnCheck = document.getElementById('btn-check');
     const btnRetry = document.getElementById('btn-retry');
+    const btnResetFull = document.getElementById('btn-reset-full');
     if (!el1 || !el2 || !el3) return;
 
     const m1 = normalizeLetter(el1.value);
@@ -616,7 +694,7 @@
     const applyStatus = (el, isCorrect) => {
       if (isCorrect) {
         el.className = 'matching-select select-correct';
-        el.disabled = true; // Завжди блокуємо правильний вибір
+        el.disabled = true;
       } else {
         el.className = 'matching-select select-incorrect';
         el.disabled = false;
@@ -630,13 +708,14 @@
     let score = (is1Correct ? 1 : 0) + (is2Correct ? 1 : 0) + (is3Correct ? 1 : 0);
 
     if (score === 3) {
-      // При правильній трійці: ховаємо обидві кнопки і блокуємо всі варіанти
       btnCheck.style.display = 'none';
       btnRetry.style.display = 'none';
+      if (btnResetFull) btnResetFull.style.display = 'block'; // З'являється лише при 3/3
       displayResult('success', 'Чудово! Правильно: 3/3 🎉', explanation, triggerHaptic);
     } else {
       btnCheck.style.display = 'none';
       btnRetry.style.display = 'block';
+      if (btnResetFull) btnResetFull.style.display = 'none'; // Ховаємо, якщо є помилки
       if (score > 0) {
         displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь!`, explanation, triggerHaptic);
       } else {
