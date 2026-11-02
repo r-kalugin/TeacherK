@@ -616,7 +616,7 @@
       });
     } else if (type === 'single' || type === 'choice') {
       container.innerHTML = `
-        <div style="margin-bottom: 8px; font-size: 14px; color: var(--hint);">Оберіть один правильний варіант:</div>
+        <div style="margin-bottom: 8px; font-size: 14px; color: var(--hint);">Оберіть одну правильну відповідь:</div>
         <div class="single-options-grid">
           ${['А', 'Б', 'В', 'Г', 'Д'].map(letter => `
             <button class="single-btn" id="opt-${letter}" type="button">${letter}</button>
