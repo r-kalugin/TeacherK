@@ -139,7 +139,6 @@
     return taskId ? taskId.trim() : null;
   }
 
-  // Обробник відповіді від Google
   window.handleGoogleResponse = function(response) {
     const taskId = getTaskId();
     const titleEl = document.getElementById('task-title');
@@ -152,24 +151,31 @@
       return;
     }
 
-    if (!response || !response.table || !response.table.rows) {
+    if (!response || !response.table) {
       titleEl.innerText = "Помилка таблиці";
       loaderEl.innerText = "Не вдалося отримати записи з таблиці.";
       return;
     }
 
-    const rows = response.table.rows;
+    const rows = response.table.rows || [];
     let task = null;
+
+    const getVal = (cell) => {
+      if (!cell) return '';
+      if (cell.v !== undefined && cell.v !== null) return String(cell.v).trim();
+      if (cell.f !== undefined && cell.f !== null) return String(cell.f).trim();
+      return '';
+    };
 
     for (let r of rows) {
       if (!r.c) continue;
-      const idVal = r.c[0] ? String(r.c[0].v !== undefined ? r.c[0].v : (r.c[0].f || '')).trim() : '';
+      const idVal = getVal(r.c[0]);
       if (idVal === taskId) {
         task = {
           task_id: idVal,
-          task_type: r.c[1] ? String(r.c[1].v || '').trim() : 'text',
-          correct_answer: r.c[2] ? String(r.c[2].v !== undefined ? r.c[2].v : (r.c[2].f || '')).trim() : '',
-          explanation: r.c[3] ? String(r.c[3].v || '').trim() : ''
+          task_type: getVal(r.c[1]).toLowerCase() || 'text',
+          correct_answer: getVal(r.c[2]),
+          explanation: getVal(r.c[3])
         };
         break;
       }
@@ -190,7 +196,7 @@
 
   function renderForm(task) {
     const container = document.getElementById('form-container');
-    const type = (task.task_type || '').toLowerCase().trim();
+    const type = (task.task_type || '').trim();
 
     if (type === 'matching') {
       container.innerHTML = `
@@ -266,10 +272,9 @@
     }
   }
 
-  // Завантаження через JSONP (повністю обходить CORS)
   window.onload = function() {
     const script = document.createElement('script');
-    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:handleGoogleResponse`;
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:handleGoogleResponse&headers=1`;
     script.onerror = function() {
       document.getElementById('task-title').innerText = "Помилка зв'язку";
       document.getElementById('loader').innerText = "Не вдалося завантажити дані таблиці. Перевірте публікацію в інтернеті.";
