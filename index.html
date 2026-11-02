@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Самоперевірка</title>
   
-  <!-- Бібліотека Telegram WebApp -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
-    // Повідомляємо Telegram про готовність негайно, щоб прибрати сірий квадратик
+    // Миттєвий сигнал Telegram про готовність інтерфейсу
     try {
       if (window.Telegram && window.Telegram.WebApp) {
         window.Telegram.WebApp.ready();
@@ -168,7 +167,7 @@
       <img id="task-img" class="task-image" alt="Умова задачі" />
     </div>
 
-    <div id="loader" class="loader">Зчитування даних...</div>
+    <div id="loader" class="loader">Зчитування даних із таблиці...</div>
     <div id="form-container" style="display: none;"></div>
     <div id="result-box"></div>
   </div>
@@ -178,24 +177,41 @@
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
 
   function getTaskId() {
-    // 1. Звичайні GET параметри
-    const urlParams = new URLSearchParams(window.location.search);
-    let taskId = urlParams.get('task') || urlParams.get('startapp');
-    if (taskId) return taskId.trim();
-
-    // 2. Офіційне поле Telegram initDataUnsafe
+    // 1. Офіційний Telegram WebApp параметр
     try {
-      const tg = window.Telegram?.WebApp;
-      if (tg?.initDataUnsafe?.start_param) {
-        return String(tg.initDataUnsafe.start_param).trim();
+      if (window.Telegram && window.Telegram.WebApp) {
+        if (window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.start_param) {
+          return String(window.Telegram.WebApp.initDataUnsafe.start_param).trim();
+        }
       }
     } catch (e) {}
 
-    // 3. Аналіз повного URL та хешу сторінки
-    const fullHref = window.location.href;
-    const matchStart = fullHref.match(/[?&#](?:startapp|start_param|tgWebAppStartParam)=([^&#]+)/i);
-    if (matchStart && matchStart[1]) {
-      return decodeURIComponent(matchStart[1]).trim();
+    // 2. Звичайні параметри пошуку в URL (?task=... або ?startapp=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    let tid = urlParams.get('task') || urlParams.get('startapp') || urlParams.get('start_param');
+    if (tid) return tid.trim();
+
+    // 3. Розбір хешу URL (куди Telegram часто вкладає tgWebAppStartParam)
+    if (window.location.hash) {
+      const hash = window.location.hash.substring(1);
+      const hashParams = new URLSearchParams(hash);
+      
+      let p = hashParams.get('tgWebAppStartParam') || hashParams.get('startapp') || hashParams.get('start_param');
+      if (p) return decodeURIComponent(p).trim();
+
+      // Якщо параметри всередині tgWebAppData
+      const webAppData = hashParams.get('tgWebAppData');
+      if (webAppData) {
+        const inner = new URLSearchParams(webAppData);
+        let innerP = inner.get('start_param');
+        if (innerP) return decodeURIComponent(innerP).trim();
+      }
+    }
+
+    // 4. Прямий пошук регулярним виразом у всьому адресному рядку
+    const fullMatch = window.location.href.match(/(?:startapp|start_param|tgWebAppStartParam)=([^&#]+)/i);
+    if (fullMatch && fullMatch[1]) {
+      return decodeURIComponent(fullMatch[1]).trim();
     }
 
     return null;
@@ -240,14 +256,6 @@
   }
 
   async function init() {
-    // Дублюючий виклик ready при запуску логіки
-    if (window.Telegram?.WebApp) {
-      try {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-      } catch (e) {}
-    }
-
     const titleEl = document.getElementById('task-title');
     const loaderEl = document.getElementById('loader');
     const formContainer = document.getElementById('form-container');
@@ -258,20 +266,15 @@
 
     if (!taskId) {
       titleEl.innerText = "Помилка";
-      loaderEl.innerHTML = "Не вказано номер завдання.<br><span style='font-size:12px; color:gray;'>Відкрийте посилання з каналу ще раз.</span>";
+      loaderEl.innerHTML = "Не вказано номер завдання.<br><small style='color:grey;'>URL: " + window.location.search + window.location.hash + "</small>";
       return;
     }
 
     loaderEl.innerText = `Завантаження завдання ${taskId}...`;
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-
       const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-
+      const response = await fetch(url);
       if (!response.ok) throw new Error("HTTP " + response.status);
       const csvText = await response.text();
 
@@ -295,7 +298,7 @@
 
       if (!task) {
         titleEl.innerText = "Завдання не знайдено";
-        loaderEl.innerText = `Завдання "${taskId}" відсутнє в базі даних.`;
+        loaderEl.innerText = `Завдання "${taskId}" відсутнє в таблиці.`;
         return;
       }
 
@@ -323,7 +326,7 @@
       renderForm(task);
     } catch (e) {
       titleEl.innerText = "Помилка зв'язку";
-      loaderEl.innerText = "Не вдалося завантажити таблицю. Спробуйте пізніше або відкрийте через браузер.";
+      loaderEl.innerText = "Не вдалося отримати дані з таблиці.";
     }
   }
 
@@ -503,12 +506,7 @@
     }
   }
 
-  // Запуск одразу після розбору HTML
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
 </html>
