@@ -176,7 +176,6 @@
     }
 
     try {
-      // Публічний експорт аркуша в CSV
       const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
       const response = await fetch(url);
       if (!response.ok) throw new Error("HTTP " + response.status);
@@ -185,7 +184,6 @@
       const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
       let task = null;
 
-      // Пропускаємо 0-й рядок (заголовки) та шукаємо рядок із потрібним task_id
       for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
         const idVal = cols[0] ? cols[0].replace(/^"|"$/g, '').trim() : '';
@@ -208,7 +206,13 @@
 
       loaderEl.style.display = 'none';
       formContainer.style.display = 'block';
-      titleEl.innerText = `Завдання № ${task.task_id}`;
+
+      // Форматування відображення: наприклад, 02.11.26_1 -> 02.11.2026_1
+      let displayId = task.task_id;
+      if (displayId.includes('.26_')) {
+        displayId = displayId.replace('.26_', '.2026_');
+      }
+      titleEl.innerText = `📚 Задача дня_${displayId}`;
 
       renderForm(task);
     } catch (e) {
