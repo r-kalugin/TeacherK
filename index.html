@@ -148,53 +148,52 @@
 
 <div class="container">
   <div class="card">
-    <h2 id="task-title">Завантаження завдання...</h2>
+    <h2 id="task-title">Завантаження...</h2>
     
     <div id="image-container" class="task-image-container">
       <img id="task-img" class="task-image" alt="Умова задачі" />
     </div>
 
-    <div id="loader" class="loader">Зчитування даних із таблиці...</div>
+    <div id="loader" class="loader">Ініціалізація форми...</div>
     <div id="form-container" style="display: none;"></div>
     <div id="result-box"></div>
   </div>
 </div>
 
 <script>
-  if (window.Telegram && window.Telegram.WebApp) {
-    try {
+  // Примусовий миттєвий сигнал у Telegram для відкриття в'юпорта
+  try {
+    if (window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
-    } catch (e) {
-      console.error(e);
     }
+  } catch (err) {
+    console.error("TG init error", err);
   }
 
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
 
   function getTaskId() {
+    // 1. Звичайний GET параметр
     const urlParams = new URLSearchParams(window.location.search);
-    let taskId = urlParams.get('task');
+    let taskId = urlParams.get('task') || urlParams.get('startapp');
     if (taskId) return taskId.trim();
 
-    const tg = window.Telegram?.WebApp;
-    if (tg?.initDataUnsafe?.start_param) {
-      return String(tg.initDataUnsafe.start_param).trim();
-    }
-
-    if (window.location.hash) {
-      const hash = window.location.hash.substring(1);
-      const hashParams = new URLSearchParams(hash);
-      const startParam = hashParams.get('tgWebAppStartParam');
-      if (startParam) return decodeURIComponent(startParam).trim();
-
-      const webAppData = hashParams.get('tgWebAppData');
-      if (webAppData) {
-        const innerParams = new URLSearchParams(webAppData);
-        const innerStart = innerParams.get('start_param');
-        if (innerStart) return decodeURIComponent(innerStart).trim();
+    // 2. Офіційне поле Telegram
+    try {
+      const tg = window.Telegram?.WebApp;
+      if (tg?.initDataUnsafe?.start_param) {
+        return String(tg.initDataUnsafe.start_param).trim();
       }
+    } catch (e) {}
+
+    // 3. Аналіз повного URL та хешу
+    const fullHref = window.location.href;
+    const matchStart = fullHref.match(/[?&#](?:startapp|start_param|tgWebAppStartParam)=([^&#]+)/i);
+    if (matchStart && matchStart[1]) {
+      return decodeURIComponent(matchStart[1]).trim();
     }
+
     return null;
   }
 
@@ -237,23 +236,26 @@
   }
 
   async function init() {
-    const taskId = getTaskId();
     const titleEl = document.getElementById('task-title');
     const loaderEl = document.getElementById('loader');
     const formContainer = document.getElementById('form-container');
     const imgContainer = document.getElementById('image-container');
     const imgEl = document.getElementById('task-img');
 
+    const taskId = getTaskId();
+
     if (!taskId) {
-      titleEl.innerText = "Помилка";
-      loaderEl.innerText = "Не вказано номер завдання (?task=...).";
+      titleEl.innerText = "Помилка запуску";
+      loaderEl.innerHTML = "Не вказано номер завдання.<br><small style='color:grey;'>URL: " + window.location.search + window.location.hash + "</small>";
       return;
     }
+
+    loaderEl.innerText = `Завантаження завдання ${taskId}...`;
 
     try {
       const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
       const response = await fetch(url);
-      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!response.ok) throw new Error("Помилка завантаження таблиці: HTTP " + response.status);
       const csvText = await response.text();
 
       const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
@@ -276,7 +278,7 @@
 
       if (!task) {
         titleEl.innerText = "Завдання не знайдено";
-        loaderEl.innerText = `Завдання з номером ${taskId} відсутнє в базі.`;
+        loaderEl.innerText = `Завдання "${taskId}" відсутнє в таблиці.`;
         return;
       }
 
@@ -304,7 +306,7 @@
       renderForm(task);
     } catch (e) {
       titleEl.innerText = "Помилка зв'язку";
-      loaderEl.innerText = "Не вдалося завантажити дані таблиці. Перевірте публікацію в інтернеті.";
+      loaderEl.innerText = e.message || "Не вдалося отримати дані.";
     }
   }
 
@@ -484,11 +486,7 @@
     }
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  window.addEventListener('load', init);
 </script>
 </body>
 </html>
