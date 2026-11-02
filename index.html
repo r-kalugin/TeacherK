@@ -175,6 +175,52 @@
 <script>
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
 
+  // Універсальні методи для надійного збереження в Telegram Cloud / LocalStorage
+  function saveUserAnswer(taskId, dataObj) {
+    const raw = JSON.stringify(dataObj);
+    try {
+      localStorage.setItem('saved_ans_' + taskId, raw);
+    } catch (e) {}
+
+    try {
+      const cloud = window.Telegram?.WebApp?.CloudStorage;
+      if (cloud && cloud.setItem) {
+        // Ключ для Telegram Cloud Storage має містити лише a-z, 0-9, _
+        const safeKey = ('ans_' + taskId).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 120);
+        cloud.setItem(safeKey, raw, (err) => {
+          if (err) console.error("CloudStorage save error", err);
+        });
+      }
+    } catch (e) {}
+  }
+
+  function loadUserAnswer(taskId, callback) {
+    let localData = null;
+    try {
+      const raw = localStorage.getItem('saved_ans_' + taskId);
+      if (raw) localData = JSON.parse(raw);
+    } catch (e) {}
+
+    try {
+      const cloud = window.Telegram?.WebApp?.CloudStorage;
+      if (cloud && cloud.getItem) {
+        const safeKey = ('ans_' + taskId).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 120);
+        cloud.getItem(safeKey, (err, val) => {
+          if (!err && val) {
+            try {
+              callback(JSON.parse(val));
+              return;
+            } catch (e) {}
+          }
+          callback(localData);
+        });
+        return;
+      }
+    } catch (e) {}
+
+    callback(localData);
+  }
+
   function getTaskId() {
     try {
       if (window.Telegram?.WebApp?.initDataUnsafe?.start_param) {
@@ -323,6 +369,7 @@
 
   function updateDisabledOptions() {
     const selects = [1, 2, 3].map(n => document.getElementById(`match-${n}`));
+    if (!selects[0] || !selects[1] || !selects[2]) return;
     const selectedValues = selects.map(s => s.value).filter(v => v !== "");
 
     selects.forEach(select => {
@@ -336,12 +383,6 @@
   function renderForm(task) {
     const container = document.getElementById('form-container');
     const type = (task.task_type || '').trim();
-    const storageKey = `saved_ans_${task.task_id}`;
-    const savedDataRaw = localStorage.getItem(storageKey);
-    let savedData = null;
-    try {
-      if (savedDataRaw) savedData = JSON.parse(savedDataRaw);
-    } catch (e) {}
 
     if (type === 'matching') {
       container.innerHTML = `
@@ -372,17 +413,22 @@
         });
       });
 
-      // Якщо учень уже відповідав раніше — відновлюємо вибір
-      if (savedData && savedData.type === 'matching') {
-        if (savedData.val1) document.getElementById('match-1').value = savedData.val1;
-        if (savedData.val2) document.getElementById('match-2').value = savedData.val2;
-        if (savedData.val3) document.getElementById('match-3').value = savedData.val3;
-        updateDisabledOptions();
-        checkMatching(task.correct_answer, task.explanation, task.task_id, false);
-      }
-
       document.getElementById('btn-check').addEventListener('click', () => {
         checkMatching(task.correct_answer, task.explanation, task.task_id, true);
+      });
+
+      // Безпечне асинхронне відновлення збереженої відповіді
+      loadUserAnswer(task.task_id, (saved) => {
+        if (saved && saved.type === 'matching') {
+          const s1 = document.getElementById('match-1');
+          const s2 = document.getElementById('match-2');
+          const s3 = document.getElementById('match-3');
+          if (s1 && saved.val1) s1.value = saved.val1;
+          if (s2 && saved.val2) s2.value = saved.val2;
+          if (s3 && saved.val3) s3.value = saved.val3;
+          updateDisabledOptions();
+          checkMatching(task.correct_answer, task.explanation, task.task_id, false);
+        }
       });
     } else {
       container.innerHTML = `
@@ -396,14 +442,19 @@
         inputEl.style.borderColor = '#ddd';
       });
 
-      // Якщо учень уже відповідав раніше — відновлюємо текст
-      if (savedData && savedData.type === 'text' && savedData.value) {
-        inputEl.value = savedData.value;
-        checkText(task.correct_answer, task.explanation, task.task_id, false);
-      }
-
       document.getElementById('btn-check').addEventListener('click', () => {
         checkText(task.correct_answer, task.explanation, task.task_id, true);
+      });
+
+      // Безпечне асинхронне відновлення збереженої відповіді
+      loadUserAnswer(task.task_id, (saved) => {
+        if (saved && saved.type === 'text' && saved.value !== undefined) {
+          const inp = document.getElementById('text-answer');
+          if (inp) {
+            inp.value = saved.value;
+            checkText(task.correct_answer, task.explanation, task.task_id, false);
+          }
+        }
       });
     }
   }
@@ -423,6 +474,7 @@
 
   function checkText(correctAnswersRaw, explanation, taskId, triggerHaptic) {
     const inputEl = document.getElementById('text-answer');
+    if (!inputEl) return;
     const val = inputEl.value;
     const cleanUser = cleanString(val);
     const validList = (correctAnswersRaw || '').split(';').map(cleanString);
@@ -430,12 +482,11 @@
     const isCorrect = validList.includes(cleanUser);
     inputEl.style.borderColor = isCorrect ? 'var(--success)' : 'var(--error)';
 
-    // Зберігаємо відповідь у localStorage
     if (taskId && val) {
-      localStorage.setItem(`saved_ans_${taskId}`, JSON.stringify({
+      saveUserAnswer(taskId, {
         type: 'text',
         value: val
-      }));
+      });
     }
 
     displayResult(
@@ -456,6 +507,7 @@
     const el1 = document.getElementById('match-1');
     const el2 = document.getElementById('match-2');
     const el3 = document.getElementById('match-3');
+    if (!el1 || !el2 || !el3) return;
 
     const m1 = normalizeLetter(el1.value);
     const m2 = normalizeLetter(el2.value);
@@ -471,14 +523,13 @@
       return;
     }
 
-    // Зберігаємо комбінацію в localStorage
     if (taskId) {
-      localStorage.setItem(`saved_ans_${taskId}`, JSON.stringify({
+      saveUserAnswer(taskId, {
         type: 'matching',
         val1: el1.value,
         val2: el2.value,
         val3: el3.value
-      }));
+      });
     }
 
     const raw = (correctPattern || '').trim();
@@ -520,6 +571,7 @@
 
   function displayResult(status, text, explanation, triggerHaptic = true) {
     const box = document.getElementById('result-box');
+    if (!box) return;
     box.style.display = 'block';
 
     const tg = window.Telegram?.WebApp;
