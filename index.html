@@ -139,7 +139,8 @@
     return taskId ? taskId.trim() : null;
   }
 
-  async function init() {
+  // Обробник відповіді від Google
+  window.handleGoogleResponse = function(response) {
     const taskId = getTaskId();
     const titleEl = document.getElementById('task-title');
     const loaderEl = document.getElementById('loader');
@@ -151,47 +152,41 @@
       return;
     }
 
-    try {
-      // Отримуємо відповідь безпосередньо через Google Visualization JSON API
-      const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`);
-      const rawText = await res.text();
-      
-      const jsonString = rawText.substring(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1);
-      const data = JSON.parse(jsonString);
-      
-      const rows = data.table.rows;
-      let task = null;
-
-      for (let r of rows) {
-        if (!r.c) continue;
-        const idVal = r.c[0] ? String(r.c[0].v !== undefined ? r.c[0].v : (r.c[0].f || '')).trim() : '';
-        if (idVal === taskId) {
-          task = {
-            task_id: idVal,
-            task_type: r.c[1] ? String(r.c[1].v || '').trim() : 'text',
-            correct_answer: r.c[2] ? String(r.c[2].v !== undefined ? r.c[2].v : (r.c[2].f || '')).trim() : '',
-            explanation: r.c[3] ? String(r.c[3].v || '').trim() : ''
-          };
-          break;
-        }
-      }
-
-      if (!task) {
-        titleEl.innerText = "Завдання не знайдено";
-        loaderEl.innerText = `Завдання з номером ${taskId} відсутнє в базі.`;
-        return;
-      }
-
-      loaderEl.style.display = 'none';
-      formContainer.style.display = 'block';
-      titleEl.innerText = `Завдання № ${task.task_id}`;
-
-      renderForm(task);
-    } catch (e) {
-      titleEl.innerText = "Помилка зв'язку";
-      loaderEl.innerText = "Не вдалося отримати дані з Google Таблиці. Перевірте доступ за посиланням.";
+    if (!response || !response.table || !response.table.rows) {
+      titleEl.innerText = "Помилка таблиці";
+      loaderEl.innerText = "Не вдалося отримати записи з таблиці.";
+      return;
     }
-  }
+
+    const rows = response.table.rows;
+    let task = null;
+
+    for (let r of rows) {
+      if (!r.c) continue;
+      const idVal = r.c[0] ? String(r.c[0].v !== undefined ? r.c[0].v : (r.c[0].f || '')).trim() : '';
+      if (idVal === taskId) {
+        task = {
+          task_id: idVal,
+          task_type: r.c[1] ? String(r.c[1].v || '').trim() : 'text',
+          correct_answer: r.c[2] ? String(r.c[2].v !== undefined ? r.c[2].v : (r.c[2].f || '')).trim() : '',
+          explanation: r.c[3] ? String(r.c[3].v || '').trim() : ''
+        };
+        break;
+      }
+    }
+
+    if (!task) {
+      titleEl.innerText = "Завдання не знайдено";
+      loaderEl.innerText = `Завдання з номером ${taskId} відсутнє в базі.`;
+      return;
+    }
+
+    loaderEl.style.display = 'none';
+    formContainer.style.display = 'block';
+    titleEl.innerText = `Завдання № ${task.task_id}`;
+
+    renderForm(task);
+  };
 
   function renderForm(task) {
     const container = document.getElementById('form-container');
@@ -271,7 +266,16 @@
     }
   }
 
-  window.onload = init;
+  // Завантаження через JSONP (повністю обходить CORS)
+  window.onload = function() {
+    const script = document.createElement('script');
+    script.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:handleGoogleResponse`;
+    script.onerror = function() {
+      document.getElementById('task-title').innerText = "Помилка зв'язку";
+      document.getElementById('loader').innerText = "Не вдалося завантажити дані таблиці. Перевірте публікацію в інтернеті.";
+    };
+    document.body.appendChild(script);
+  };
 </script>
 </body>
 </html>
