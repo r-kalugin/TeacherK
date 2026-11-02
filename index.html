@@ -432,8 +432,8 @@
       });
     } else {
       container.innerHTML = `
-        <div style="margin-bottom: 10px; font-size: 14px; color: var(--hint);">Введіть отриману відповідь:</div>
-        <input type="text" id="text-answer" class="input-field" placeholder="Наприклад: 120" autocomplete="off" />
+        <div style="margin-bottom: 10px; font-size: 14px; color: var(--hint);">Уведіть отриману відповідь:</div>
+        <input type="text" id="text-answer" class="input-field" placeholder="" autocomplete="off" />
         <button class="submit-btn" id="btn-check">Перевірити</button>
       `;
 
@@ -491,7 +491,7 @@
 
     displayResult(
       isCorrect ? 'success' : 'error',
-      isCorrect ? 'Чудово! Відповідь правильна 🎉' : 'Неправильно. Спробуйте ще раз!',
+      isCorrect ? 'Саме так! Відповідь правильна 🎉' : 'Ця відповідь неправильна. Спробуйте ще раз!',
       explanation,
       triggerHaptic
     );
