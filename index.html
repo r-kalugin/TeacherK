@@ -14,6 +14,7 @@
       --btn: var(--tg-theme-button-color, #2481cc);
       --btn-text: var(--tg-theme-button-text-color, #ffffff);
       --success: #28a745;
+      --warning: #e67e22;
       --error: #dc3545;
     }
     body {
@@ -97,6 +98,11 @@
       background-color: rgba(40, 167, 69, 0.15);
       color: var(--success);
       border: 1px solid var(--success);
+    }
+    .result-warning {
+      background-color: rgba(230, 126, 34, 0.15);
+      color: var(--warning);
+      border: 1px solid var(--warning);
     }
     .result-error {
       background-color: rgba(220, 53, 69, 0.15);
@@ -207,7 +213,6 @@
       loaderEl.style.display = 'none';
       formContainer.style.display = 'block';
 
-      // Форматування відображення: наприклад, 02.11.26_1 -> 02.11.2026_1
       let displayId = task.task_id;
       if (displayId.includes('.26_')) {
         displayId = displayId.replace('.26_', '.2026_');
@@ -264,7 +269,7 @@
     const validList = correctAnswersRaw.split(';').map(cleanString);
 
     const isCorrect = validList.includes(cleanUser);
-    displayResult(isCorrect, decodeURIComponent(encodedExplanation));
+    displayResult(isCorrect ? 'success' : 'error', isCorrect ? 'Чудово! Відповідь правильна 🎉' : 'Неправильно. Спробуйте ще раз!', decodeURIComponent(encodedExplanation));
   };
 
   window.checkMatching = function(correctPattern, encodedExplanation) {
@@ -277,24 +282,43 @@
       return;
     }
 
-    const userCombination = cleanString(`1${m1}2${m2}3${m3}`);
-    const correctClean = cleanString(correctPattern);
+    // Витягуємо правильні літери для кожного з пунктів 1, 2, 3
+    const pat = correctPattern.toUpperCase();
+    const c1 = pat.match(/1\s*[-–—:]?\s*([А-Д])/)?.[1] || '';
+    const c2 = pat.match(/2\s*[-–—:]?\s*([А-Д])/)?.[1] || '';
+    const c3 = pat.match(/3\s*[-–—:]?\s*([А-Д])/)?.[1] || '';
 
-    const isCorrect = (userCombination === correctClean);
-    displayResult(isCorrect, decodeURIComponent(encodedExplanation));
+    let score = 0;
+    if (m1 === c1) score++;
+    if (m2 === c2) score++;
+    if (m3 === c3) score++;
+
+    const explanation = decodeURIComponent(encodedExplanation);
+
+    if (score === 3) {
+      displayResult('success', 'Чудово! Правильно: 3/3 🎉', explanation);
+    } else if (score > 0) {
+      displayResult('warning', `Частково правильно: ${score}/3. Спробуйте знайти помилку!`, explanation);
+    } else {
+      displayResult('error', 'Правильних відповідей: 0/3. Спробуйте ще раз!', explanation);
+    }
   };
 
-  function displayResult(isCorrect, explanation) {
+  function displayResult(status, text, explanation) {
     const box = document.getElementById('result-box');
     box.style.display = 'block';
 
-    if (isCorrect) {
+    if (status === 'success') {
       box.className = 'result-success';
-      box.innerHTML = `<strong>Чудово! Відповідь правильна 🎉</strong>${explanation ? `<br><br>${explanation}` : ''}`;
+      box.innerHTML = `<strong>${text}</strong>${explanation ? `<br><br>${explanation}` : ''}`;
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+    } else if (status === 'warning') {
+      box.className = 'result-warning';
+      box.innerHTML = `<strong>${text}</strong>${explanation ? `<br><br>${explanation}` : ''}`;
+      if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
     } else {
       box.className = 'result-error';
-      box.innerHTML = `<strong>Неправильно. Спробуйте ще раз!</strong>${explanation ? `<br><br>${explanation}` : ''}`;
+      box.innerHTML = `<strong>${text}</strong>${explanation ? `<br><br>${explanation}` : ''}`;
       if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
     }
   }
