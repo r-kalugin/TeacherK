@@ -793,7 +793,7 @@
     );
   }
 
-  async function checkMatching(correctHash, explanation, taskId, triggerHaptic) {
+  async function checkMatching(correctHashesRaw, explanation, taskId, triggerHaptic) {
     const el1 = document.getElementById('match-1');
     const el2 = document.getElementById('match-2');
     const el3 = document.getElementById('match-3');
@@ -825,15 +825,43 @@
       });
     }
 
-    const combination = `1-${m1} 2-${m2} 3-${m3}`;
-    const userHash = await computeHash(taskId, combination);
-    const isFullMatch = (userHash === correctHash);
+    // Отримуємо 3 хеші з таблиці
+    const parts = (correctHashesRaw || '').split(',').map(s => s.trim());
+    const h1 = parts[0] || '';
+    const h2 = parts[1] || '';
+    const h3 = parts[2] || '';
 
-    if (isFullMatch) {
-      [el1, el2, el3].forEach(el => {
+    // Обчислюємо хеші для кожного пункту окремо
+    const userH1 = await computeHash(taskId, "1-" + m1);
+    const userH2 = await computeHash(taskId, "2-" + m2);
+    const userH3 = await computeHash(taskId, "3-" + m3);
+
+    const is1Correct = (userH1 === h1);
+    const is2Correct = (userH2 === h2);
+    const is3Correct = (userH3 === h3);
+
+    lockedCorrectLetters = [];
+    if (is1Correct) lockedCorrectLetters.push(m1);
+    if (is2Correct) lockedCorrectLetters.push(m2);
+    if (is3Correct) lockedCorrectLetters.push(m3);
+
+    const applyStatus = (el, isCorrect) => {
+      if (isCorrect) {
         el.className = 'matching-select select-correct';
         el.disabled = true;
-      });
+      } else {
+        el.className = 'matching-select select-incorrect';
+        el.disabled = false;
+      }
+    };
+
+    applyStatus(el1, is1Correct);
+    applyStatus(el2, is2Correct);
+    applyStatus(el3, is3Correct);
+
+    let score = (is1Correct ? 1 : 0) + (is2Correct ? 1 : 0) + (is3Correct ? 1 : 0);
+
+    if (score === 3) {
       btnCheck.style.display = 'none';
       if (btnResetFull) btnResetFull.style.display = 'block';
 
@@ -843,13 +871,14 @@
 
       displayResult('success', successMsg, explanation, triggerHaptic);
     } else {
-      [el1, el2, el3].forEach(el => {
-        el.className = 'matching-select select-incorrect';
-      });
       btnCheck.style.display = 'none';
       if (btnResetFull) btnResetFull.style.display = 'none';
 
-      displayResult('error', `Комбінація містить помилки. Змініть варіанти для повторної перевірки! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
+      if (score > 0) {
+        displayResult('warning', `Частково правильно: ${score}/3. Змініть варіанти для повторної перевірки! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
+      } else {
+        displayResult('error', `Правильних відповідей: 0/3. Спробуйте ще раз! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
+      }
     }
 
     updateDisabledOptions();
