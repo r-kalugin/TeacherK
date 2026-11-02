@@ -617,7 +617,7 @@
       });
     } else if (type === 'single' || type === 'choice') {
       container.innerHTML = `
-        <div style="margin-bottom: 8px; font-size: 14px; color: var(--hint);">Оберіть одну правильну відповідь:</div>
+        <div style="margin-bottom: 8px; font-size: 14px; color: var(--hint);">Оберіть один правильний варіант:</div>
         <div class="single-options-grid">
           ${['А', 'Б', 'В', 'Г', 'Д'].map(letter => `
             <button class="single-btn" id="opt-${letter}" type="button">${letter}</button>
@@ -632,7 +632,7 @@
           if (btn.disabled) return;
           selectedSingleChoice = letter;
 
-          // Скидаємо всі літери на стандартний чорний колір
+          // Скидаємо стан кнопок та обираємо нову
           ['А', 'Б', 'В', 'Г', 'Д'].forEach(l => {
             const b = document.getElementById(`opt-${l}`);
             if (b && !b.classList.contains('single-correct')) {
@@ -640,11 +640,11 @@
             }
           });
 
-          // Прибираємо старе червоне повідомлення
+          // Ховаємо попередній результат помилки
           const resultBox = document.getElementById('result-box');
           if (resultBox) resultBox.style.display = 'none';
 
-          // Гарантуємо, що кнопка "Перевірити" доступна
+          // Знову показуємо кнопку "Перевірити"
           const btnCheck = document.getElementById('btn-check');
           if (btnCheck) btnCheck.style.display = 'block';
         });
@@ -737,6 +737,8 @@
       if (activeBtn) {
         activeBtn.className = 'single-btn single-incorrect';
       }
+      // При неправильній відповіді ховаємо кнопку перевірки
+      if (btnCheck) btnCheck.style.display = 'none';
       if (btnResetFull) btnResetFull.style.display = 'none';
     }
 
