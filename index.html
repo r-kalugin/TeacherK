@@ -126,6 +126,18 @@
       border-radius: 10px;
       cursor: pointer;
     }
+    button.retry-btn {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      background-color: transparent;
+      color: var(--btn);
+      border: 1.5px solid var(--btn);
+      border-radius: 10px;
+      cursor: pointer;
+    }
     #result-box {
       margin-top: 16px;
       padding: 12px;
@@ -174,8 +186,8 @@
 
 <script>
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
+  let lockedCorrectLetters = [];
 
-  // Універсальні методи для надійного збереження в Telegram Cloud / LocalStorage
   function saveUserAnswer(taskId, dataObj) {
     const raw = JSON.stringify(dataObj);
     try {
@@ -185,7 +197,6 @@
     try {
       const cloud = window.Telegram?.WebApp?.CloudStorage;
       if (cloud && cloud.setItem) {
-        // Ключ для Telegram Cloud Storage має містити лише a-z, 0-9, _
         const safeKey = ('ans_' + taskId).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 120);
         cloud.setItem(safeKey, raw, (err) => {
           if (err) console.error("CloudStorage save error", err);
@@ -370,14 +381,40 @@
   function updateDisabledOptions() {
     const selects = [1, 2, 3].map(n => document.getElementById(`match-${n}`));
     if (!selects[0] || !selects[1] || !selects[2]) return;
+
     const selectedValues = selects.map(s => s.value).filter(v => v !== "");
 
     selects.forEach(select => {
+      if (select.disabled) return;
+
       Array.from(select.options).forEach(opt => {
         if (!opt.value) return;
-        opt.disabled = selectedValues.includes(opt.value) && select.value !== opt.value;
+
+        const isChosenElsewhere = selectedValues.includes(opt.value) && select.value !== opt.value;
+        const isLockedCorrect = lockedCorrectLetters.includes(opt.value) && select.value !== opt.value;
+
+        opt.disabled = isChosenElsewhere || isLockedCorrect;
       });
     });
+  }
+
+  function resetIncorrectMatching() {
+    const selects = [1, 2, 3].map(n => document.getElementById(`match-${n}`));
+    const btnCheck = document.getElementById('btn-check');
+    const btnRetry = document.getElementById('btn-retry');
+    const resultBox = document.getElementById('result-box');
+
+    selects.forEach(sel => {
+      if (!sel.disabled) {
+        sel.value = "";
+        sel.className = 'matching-select';
+      }
+    });
+
+    updateDisabledOptions();
+    resultBox.style.display = 'none';
+    btnRetry.style.display = 'none';
+    btnCheck.style.display = 'block';
   }
 
   function renderForm(task) {
@@ -403,6 +440,7 @@
           </div>
         `).join('')}
         <button class="submit-btn" id="btn-check">Перевірити</button>
+        <button class="retry-btn" id="btn-retry" style="display: none;">Спробувати ще раз</button>
       `;
 
       [1, 2, 3].forEach(num => {
@@ -415,6 +453,10 @@
 
       document.getElementById('btn-check').addEventListener('click', () => {
         checkMatching(task.correct_answer, task.explanation, task.task_id, true);
+      });
+
+      document.getElementById('btn-retry').addEventListener('click', () => {
+        resetIncorrectMatching();
       });
 
       // Безпечне асинхронне відновлення збереженої відповіді
@@ -507,6 +549,8 @@
     const el1 = document.getElementById('match-1');
     const el2 = document.getElementById('match-2');
     const el3 = document.getElementById('match-3');
+    const btnCheck = document.getElementById('btn-check');
+    const btnRetry = document.getElementById('btn-retry');
     if (!el1 || !el2 || !el3) return;
 
     const m1 = normalizeLetter(el1.value);
@@ -546,27 +590,48 @@
       }
     }
 
-    const applyHighlight = (el, isCorrect) => {
-      el.className = 'matching-select ' + (isCorrect ? 'select-correct' : 'select-incorrect');
-    };
-
     const is1Correct = (m1 === c1);
     const is2Correct = (m2 === c2);
     const is3Correct = (m3 === c3);
 
-    applyHighlight(el1, is1Correct);
-    applyHighlight(el2, is2Correct);
-    applyHighlight(el3, is3Correct);
+    lockedCorrectLetters = [];
+    if (is1Correct) lockedCorrectLetters.push(m1);
+    if (is2Correct) lockedCorrectLetters.push(m2);
+    if (is3Correct) lockedCorrectLetters.push(m3);
+
+    const applyStatus = (el, isCorrect) => {
+      if (isCorrect) {
+        el.className = 'matching-select select-correct';
+        el.disabled = true;
+      } else {
+        el.className = 'matching-select select-incorrect';
+        el.disabled = false;
+      }
+    };
+
+    applyStatus(el1, is1Correct);
+    applyStatus(el2, is2Correct);
+    applyStatus(el3, is3Correct);
 
     let score = (is1Correct ? 1 : 0) + (is2Correct ? 1 : 0) + (is3Correct ? 1 : 0);
 
     if (score === 3) {
+      btnCheck.style.display = 'block';
+      btnCheck.disabled = true;
+      btnCheck.innerText = 'Виконано ✓';
+      btnRetry.style.display = 'none';
       displayResult('success', 'Чудово! Правильно: 3/3 🎉', explanation, triggerHaptic);
-    } else if (score > 0) {
-      displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь!`, explanation, triggerHaptic);
     } else {
-      displayResult('error', 'Правильних відповідей: 0/3. Спробуйте ще раз!', explanation, triggerHaptic);
+      btnCheck.style.display = 'none';
+      btnRetry.style.display = 'block';
+      if (score > 0) {
+        displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь!`, explanation, triggerHaptic);
+      } else {
+        displayResult('error', 'Правильних відповідей: 0/3. Спробуйте ще раз!', explanation, triggerHaptic);
+      }
     }
+
+    updateDisabledOptions();
   }
 
   function displayResult(status, text, explanation, triggerHaptic = true) {
