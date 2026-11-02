@@ -70,7 +70,7 @@
       width: 100%;
       padding: 12px;
       font-size: 16px;
-      border: 1px solid #ddd;
+      border: 1.5px solid #bbb;
       border-radius: 8px;
       box-sizing: border-box;
       outline: none;
@@ -89,7 +89,7 @@
       cursor: not-allowed;
     }
     
-    /* Одиночний вибір (single choice) */
+    /* Одиночний вибір */
     .single-options-grid {
       display: flex;
       justify-content: space-between;
@@ -112,8 +112,8 @@
       transition: all 0.2s ease;
     }
     .single-btn.selected {
-      border-color: var(--btn);
-      background-color: rgba(36, 129, 204, 0.12);
+      border-color: var(--btn) !important;
+      background-color: rgba(36, 129, 204, 0.12) !important;
       color: var(--btn) !important;
     }
     .single-btn.single-correct {
@@ -128,7 +128,7 @@
       color: var(--error) !important;
     }
 
-    /* Відповідності (matching) */
+    /* Відповідності */
     .matching-row {
       display: flex;
       align-items: center;
@@ -143,7 +143,7 @@
       padding: 8px 12px;
       font-size: 16px;
       border-radius: 8px;
-      border: 1.5px solid #ddd;
+      border: 1.5px solid #bbb;
       background: var(--card-bg);
       color: var(--text);
       outline: none;
@@ -173,18 +173,6 @@
       background-color: var(--btn);
       color: var(--btn-text);
       border: none;
-      border-radius: 10px;
-      cursor: pointer;
-    }
-    button.retry-btn {
-      width: 100%;
-      padding: 12px;
-      margin-top: 10px;
-      font-size: 15px;
-      font-weight: 600;
-      background-color: transparent;
-      color: var(--btn);
-      border: 1.5px solid var(--btn);
       border-radius: 10px;
       cursor: pointer;
     }
@@ -260,8 +248,8 @@
 
 <script>
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
-  const SHEET_GID = '121652371'; // Аркуш AppExport із захешованими відповідями
-  const SALT = "TeacherK_Secret_2026_"; // Той самий секретний ключ, що й у скрипті таблиці
+  const SHEET_GID = '121652371'; 
+  const SALT = "TeacherK_Secret_2026_"; 
 
   let lockedCorrectLetters = [];
   let currentTask = null;
@@ -507,25 +495,6 @@
     });
   }
 
-  function resetIncorrectMatching() {
-    const selects = [1, 2, 3].map(n => document.getElementById(`match-${n}`));
-    const btnCheck = document.getElementById('btn-check');
-    const btnRetry = document.getElementById('btn-retry');
-    const resultBox = document.getElementById('result-box');
-
-    selects.forEach(sel => {
-      if (!sel.disabled) {
-        sel.value = "";
-        sel.className = 'matching-select';
-      }
-    });
-
-    updateDisabledOptions();
-    resultBox.style.display = 'none';
-    btnRetry.style.display = 'none';
-    btnCheck.style.display = 'block';
-  }
-
   function fullResetTask() {
     if (!currentTask) return;
     clearUserAnswer(currentTask.task_id);
@@ -536,11 +505,9 @@
     const resultBox = document.getElementById('result-box');
     const btnResetFull = document.getElementById('btn-reset-full');
     const btnCheck = document.getElementById('btn-check');
-    const btnRetry = document.getElementById('btn-retry');
 
     resultBox.style.display = 'none';
     btnResetFull.style.display = 'none';
-    if (btnRetry) btnRetry.style.display = 'none';
 
     if (currentTask.task_type === 'matching') {
       [1, 2, 3].forEach(num => {
@@ -549,6 +516,7 @@
           el.value = "";
           el.disabled = false;
           el.className = 'matching-select';
+          el.style.borderColor = '#bbb';
         }
       });
       updateDisabledOptions();
@@ -558,6 +526,8 @@
         if (btn) {
           btn.className = 'single-btn';
           btn.disabled = false;
+          btn.style.borderColor = '#bbb';
+          btn.style.backgroundColor = '';
         }
       });
     } else {
@@ -566,7 +536,7 @@
         inp.value = "";
         inp.disabled = false;
         inp.className = 'input-field';
-        inp.style.borderColor = '#ddd';
+        inp.style.borderColor = '#bbb';
       }
     }
 
@@ -582,7 +552,7 @@
     if (type === 'matching') {
       container.innerHTML = `
         <div style="margin-bottom: 14px; font-size: 14px; color: var(--hint);">
-          Установіть відповідності:
+          Доберіть відповідність:
         </div>
         ${[1, 2, 3].map(num => `
           <div class="matching-row">
@@ -598,7 +568,6 @@
           </div>
         `).join('')}
         <button class="submit-btn" id="btn-check">Перевірити</button>
-        <button class="retry-btn" id="btn-retry" style="display: none;">Спробувати ще раз</button>
       `;
 
       [1, 2, 3].forEach(num => {
@@ -607,13 +576,9 @@
           if (!el.disabled) {
             el.className = 'matching-select';
             const btnCheck = document.getElementById('btn-check');
-            const btnRetry = document.getElementById('btn-retry');
             const resultBox = document.getElementById('result-box');
-            if (btnCheck && btnRetry && btnRetry.style.display === 'block') {
-              btnRetry.style.display = 'none';
-              btnCheck.style.display = 'block';
-              if (resultBox) resultBox.style.display = 'none';
-            }
+            if (btnCheck) btnCheck.style.display = 'block';
+            if (resultBox) resultBox.style.display = 'none';
           }
           updateDisabledOptions();
         });
@@ -622,10 +587,6 @@
       document.getElementById('btn-check').addEventListener('click', () => {
         attemptsCount++;
         checkMatching(task.answer_hash, task.explanation, task.task_id, true);
-      });
-
-      document.getElementById('btn-retry').addEventListener('click', () => {
-        resetIncorrectMatching();
       });
 
       loadUserAnswer(task.task_id, (saved) => {
@@ -662,6 +623,7 @@
             const b = document.getElementById(`opt-${l}`);
             if (b && !b.classList.contains('single-correct')) {
               b.className = (l === letter) ? 'single-btn selected' : 'single-btn';
+              b.style.borderColor = (l === letter) ? 'var(--btn)' : '#bbb';
             }
           });
 
@@ -696,7 +658,7 @@
 
       const inputEl = document.getElementById('text-answer');
       inputEl.addEventListener('input', () => {
-        inputEl.style.borderColor = '#ddd';
+        inputEl.style.borderColor = '#bbb';
       });
 
       document.getElementById('btn-check').addEventListener('click', () => {
@@ -840,7 +802,6 @@
     const el2 = document.getElementById('match-2');
     const el3 = document.getElementById('match-3');
     const btnCheck = document.getElementById('btn-check');
-    const btnRetry = document.getElementById('btn-retry');
     const btnResetFull = document.getElementById('btn-reset-full');
     if (!el1 || !el2 || !el3) return;
 
@@ -868,7 +829,6 @@
       });
     }
 
-    // Формуємо рядок вигляду "1-А 2-Б 3-В", як він записаний у вихідній таблиці Admin
     const combination = `1-${m1} 2-${m2} 3-${m3}`;
     const userHash = await computeHash(taskId, combination);
     const isFullMatch = (userHash === correctHash);
@@ -879,7 +839,6 @@
         el.disabled = true;
       });
       btnCheck.style.display = 'none';
-      btnRetry.style.display = 'none';
       if (btnResetFull) btnResetFull.style.display = 'block';
 
       const successMsg = attemptsCount === 1 
@@ -892,10 +851,9 @@
         el.className = 'matching-select select-incorrect';
       });
       btnCheck.style.display = 'none';
-      btnRetry.style.display = 'block';
       if (btnResetFull) btnResetFull.style.display = 'none';
 
-      displayResult('error', `Комбінація містить помилки. Спробуйте ще раз! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
+      displayResult('error', `Комбінація містить помилки. Змініть варіанти для повторної перевірки! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
     }
 
     updateDisabledOptions();
