@@ -875,7 +875,7 @@
       if (btnResetFull) btnResetFull.style.display = 'none';
 
       if (score > 0) {
-        displayResult('warning', `Частково правильно: ${score}/3. Змініть варіанти для повторної перевірки! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
+        displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
       } else {
         displayResult('error', `Правильних відповідей: 0/3. Спробуйте ще раз! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
       }
