@@ -227,6 +227,13 @@
       color: var(--error);
       border: 1px solid var(--error);
     }
+    .attempts-badge {
+      display: block;
+      font-size: 13px;
+      margin-top: 4px;
+      opacity: 0.85;
+      font-weight: normal;
+    }
     .loader {
       text-align: center;
       color: var(--hint);
@@ -256,6 +263,7 @@
   let lockedCorrectLetters = [];
   let currentTask = null;
   let selectedSingleChoice = null;
+  let attemptsCount = 0; // Лічильник спроб для активного завдання
 
   function saveUserAnswer(taskId, dataObj) {
     const raw = JSON.stringify(dataObj);
@@ -508,6 +516,7 @@
     clearUserAnswer(currentTask.task_id);
     lockedCorrectLetters = [];
     selectedSingleChoice = null;
+    attemptsCount = 0; // Скидаємо лічильник
 
     const resultBox = document.getElementById('result-box');
     const btnResetFull = document.getElementById('btn-reset-full');
@@ -596,6 +605,7 @@
       });
 
       document.getElementById('btn-check').addEventListener('click', () => {
+        attemptsCount++;
         checkMatching(task.correct_answer, task.explanation, task.task_id, true);
       });
 
@@ -605,6 +615,7 @@
 
       loadUserAnswer(task.task_id, (saved) => {
         if (saved && saved.type === 'matching') {
+          attemptsCount = saved.attempts || 1;
           const s1 = document.getElementById('match-1');
           const s2 = document.getElementById('match-2');
           const s3 = document.getElementById('match-3');
@@ -632,7 +643,6 @@
           if (btn.disabled) return;
           selectedSingleChoice = letter;
 
-          // Скидаємо стан кнопок та обираємо нову
           ['А', 'Б', 'В', 'Г', 'Д'].forEach(l => {
             const b = document.getElementById(`opt-${l}`);
             if (b && !b.classList.contains('single-correct')) {
@@ -640,22 +650,22 @@
             }
           });
 
-          // Ховаємо попередній результат помилки
           const resultBox = document.getElementById('result-box');
           if (resultBox) resultBox.style.display = 'none';
 
-          // Знову показуємо кнопку "Перевірити"
           const btnCheck = document.getElementById('btn-check');
           if (btnCheck) btnCheck.style.display = 'block';
         });
       });
 
       document.getElementById('btn-check').addEventListener('click', () => {
+        attemptsCount++;
         checkSingle(task.correct_answer, task.explanation, task.task_id, true);
       });
 
       loadUserAnswer(task.task_id, (saved) => {
         if (saved && saved.type === 'single' && saved.value) {
+          attemptsCount = saved.attempts || 1;
           selectedSingleChoice = saved.value;
           const b = document.getElementById(`opt-${saved.value}`);
           if (b) b.classList.add('selected');
@@ -675,11 +685,13 @@
       });
 
       document.getElementById('btn-check').addEventListener('click', () => {
+        attemptsCount++;
         checkText(task.correct_answer, task.explanation, task.task_id, true);
       });
 
       loadUserAnswer(task.task_id, (saved) => {
         if (saved && saved.type === 'text' && saved.value !== undefined) {
+          attemptsCount = saved.attempts || 1;
           const inp = document.getElementById('text-answer');
           if (inp) {
             inp.value = saved.value;
@@ -700,7 +712,13 @@
   }
 
   function cleanString(str) {
-    return (str || '').toString().toLowerCase().replace(/[\s\-_,.:;]/g, '').trim();
+    return (str || '')
+      .toString()
+      .toLowerCase()
+      .replace(/[–—−]/g, '-') // нормалізує всі види тире до мінуса
+      .replace(/,/g, '.')      // нормалізує коми до крапки
+      .replace(/\s+/g, '')     // прибирає пробіли
+      .trim();
   }
 
   function checkSingle(correctAnswerRaw, explanation, taskId, triggerHaptic) {
@@ -737,7 +755,6 @@
       if (activeBtn) {
         activeBtn.className = 'single-btn single-incorrect';
       }
-      // При неправильній відповіді ховаємо кнопку перевірки
       if (btnCheck) btnCheck.style.display = 'none';
       if (btnResetFull) btnResetFull.style.display = 'none';
     }
@@ -745,13 +762,18 @@
     if (taskId) {
       saveUserAnswer(taskId, {
         type: 'single',
-        value: selectedSingleChoice
+        value: selectedSingleChoice,
+        attempts: attemptsCount
       });
     }
 
+    const successMsg = attemptsCount === 1 
+      ? 'Бездоганно! Відповідь правильна з 1-ї спроби 🎉' 
+      : `Саме так! Відповідь правильна 🎉 <span class="attempts-badge">Спроб використано: ${attemptsCount}</span>`;
+
     displayResult(
       isCorrect ? 'success' : 'error',
-      isCorrect ? 'Саме так! Відповідь правильна 🎉' : 'Ця відповідь неправильна. Спробуйте ще раз!',
+      isCorrect ? successMsg : `Ця відповідь неправильна. Спробуйте ще раз! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`,
       explanation,
       triggerHaptic
     );
@@ -781,13 +803,18 @@
     if (taskId && val) {
       saveUserAnswer(taskId, {
         type: 'text',
-        value: val
+        value: val,
+        attempts: attemptsCount
       });
     }
 
+    const successMsg = attemptsCount === 1 
+      ? 'Бездоганно! Відповідь правильна з 1-ї спроби 🎉' 
+      : `Саме так! Відповідь правильна 🎉 <span class="attempts-badge">Спроб використано: ${attemptsCount}</span>`;
+
     displayResult(
       isCorrect ? 'success' : 'error',
-      isCorrect ? 'Саме так! Відповідь правильна 🎉' : 'Ця відповідь неправильна. Спробуйте ще раз!',
+      isCorrect ? successMsg : `Ця відповідь неправильна. Спробуйте ще раз! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`,
       explanation,
       triggerHaptic
     );
@@ -827,7 +854,8 @@
         type: 'matching',
         val1: el1.value,
         val2: el2.value,
-        val3: el3.value
+        val3: el3.value,
+        attempts: attemptsCount
       });
     }
 
@@ -874,15 +902,20 @@
       btnCheck.style.display = 'none';
       btnRetry.style.display = 'none';
       if (btnResetFull) btnResetFull.style.display = 'block';
-      displayResult('success', 'Чудово! Правильно: 3/3 🎉', explanation, triggerHaptic);
+
+      const successMsg = attemptsCount === 1 
+        ? 'Бездоганно! Правильно: 3/3 з 1-ї спроби 🎉' 
+        : `Чудово! Правильно: 3/3 🎉 <span class="attempts-badge">Спроб використано: ${attemptsCount}</span>`;
+
+      displayResult('success', successMsg, explanation, triggerHaptic);
     } else {
       btnCheck.style.display = 'none';
       btnRetry.style.display = 'block';
       if (btnResetFull) btnResetFull.style.display = 'none';
       if (score > 0) {
-        displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь!`, explanation, triggerHaptic);
+        displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
       } else {
-        displayResult('error', 'Правильних відповідей: 0/3. Спробуйте ще раз!', explanation, triggerHaptic);
+        displayResult('error', `Правильних відповідей: 0/3. Спробуйте ще раз! <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
       }
     }
 
