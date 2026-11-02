@@ -434,7 +434,7 @@
         if (!opt.value) return;
 
         const isChosenElsewhere = selectedValues.includes(opt.value) && select.value !== opt.value;
-        const isLockedCorrect = lockedCorrectLetters.includes(opt.value) && select.value !== opt.value;
+        const isLockedCorrect = lockedCorrectLetters.includes(opt.value);
 
         opt.disabled = isChosenElsewhere || isLockedCorrect;
       });
@@ -528,7 +528,18 @@
       [1, 2, 3].forEach(num => {
         const el = document.getElementById(`match-${num}`);
         el.addEventListener('change', () => {
-          el.className = 'matching-select';
+          if (!el.disabled) {
+            el.className = 'matching-select';
+            // Якщо користувач змінює варіант після перевірки, повертаємо кнопку перевірки
+            const btnCheck = document.getElementById('btn-check');
+            const btnRetry = document.getElementById('btn-retry');
+            const resultBox = document.getElementById('result-box');
+            if (btnCheck && btnRetry && btnRetry.style.display === 'block') {
+              btnRetry.style.display = 'none';
+              btnCheck.style.display = 'block';
+              if (resultBox) resultBox.style.display = 'none';
+            }
+          }
           updateDisabledOptions();
         });
       });
@@ -609,7 +620,7 @@
       inputEl.className = 'input-field input-locked';
       inputEl.disabled = true;
       if (btnCheck) btnCheck.style.display = 'none';
-      if (btnResetFull) btnResetFull.style.display = 'block'; // З'являється лише при повній правильності
+      if (btnResetFull) btnResetFull.style.display = 'block';
     } else {
       inputEl.style.borderColor = 'var(--error)';
       if (btnResetFull) btnResetFull.style.display = 'none';
@@ -710,12 +721,12 @@
     if (score === 3) {
       btnCheck.style.display = 'none';
       btnRetry.style.display = 'none';
-      if (btnResetFull) btnResetFull.style.display = 'block'; // З'являється лише при 3/3
+      if (btnResetFull) btnResetFull.style.display = 'block';
       displayResult('success', 'Чудово! Правильно: 3/3 🎉', explanation, triggerHaptic);
     } else {
       btnCheck.style.display = 'none';
       btnRetry.style.display = 'block';
-      if (btnResetFull) btnResetFull.style.display = 'none'; // Ховаємо, якщо є помилки
+      if (btnResetFull) btnResetFull.style.display = 'none';
       if (score > 0) {
         displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь!`, explanation, triggerHaptic);
       } else {
