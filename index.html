@@ -14,7 +14,7 @@
       --btn: var(--tg-theme-button-color, #2481cc);
       --btn-text: var(--tg-theme-button-text-color, #ffffff);
       --success: #28a745;
-      --warning: #e67e22;
+      --warning: #d97706;
       --error: #dc3545;
     }
     body {
@@ -100,7 +100,7 @@
       border: 1px solid var(--success);
     }
     .result-warning {
-      background-color: rgba(230, 126, 34, 0.15);
+      background-color: rgba(217, 119, 6, 0.15);
       color: var(--warning);
       border: 1px solid var(--warning);
     }
@@ -248,61 +248,96 @@
             </select>
           </div>
         `).join('')}
-        <button class="submit-btn" onclick="checkMatching('${task.correct_answer}', '${encodeURIComponent(task.explanation || '')}')">Перевірити</button>
+        <button class="submit-btn" id="btn-check">Перевірити</button>
       `;
+
+      document.getElementById('btn-check').addEventListener('click', () => {
+        checkMatching(task.correct_answer, task.explanation);
+      });
     } else {
       container.innerHTML = `
         <div style="margin-bottom: 10px; font-size: 14px; color: var(--hint);">Введіть отриману відповідь:</div>
         <input type="text" id="text-answer" class="input-field" placeholder="Наприклад: 120" autocomplete="off" />
-        <button class="submit-btn" onclick="checkText('${task.correct_answer}', '${encodeURIComponent(task.explanation || '')}')">Перевірити</button>
+        <button class="submit-btn" id="btn-check">Перевірити</button>
       `;
+
+      document.getElementById('btn-check').addEventListener('click', () => {
+        checkText(task.correct_answer, task.explanation);
+      });
     }
+  }
+
+  function normalizeLetter(ch) {
+    ch = (ch || '').toUpperCase().trim();
+    const map = {
+      'A': 'А', 'B': 'В', 'C': 'С', 'E': 'Е', 'H': 'Н',
+      'I': 'І', 'O': 'О', 'P': 'Р', 'T': 'Т', 'X': 'Х'
+    };
+    return map[ch] || ch;
   }
 
   function cleanString(str) {
     return (str || '').toString().toLowerCase().replace(/[\s\-_,.:;]/g, '').trim();
   }
 
-  window.checkText = function(correctAnswersRaw, encodedExplanation) {
+  function checkText(correctAnswersRaw, explanation) {
     const input = document.getElementById('text-answer').value;
     const cleanUser = cleanString(input);
-    const validList = correctAnswersRaw.split(';').map(cleanString);
+    const validList = (correctAnswersRaw || '').split(';').map(cleanString);
 
     const isCorrect = validList.includes(cleanUser);
-    displayResult(isCorrect ? 'success' : 'error', isCorrect ? 'Чудово! Відповідь правильна 🎉' : 'Неправильно. Спробуйте ще раз!', decodeURIComponent(encodedExplanation));
-  };
+    displayResult(
+      isCorrect ? 'success' : 'error',
+      isCorrect ? 'Чудово! Відповідь правильна 🎉' : 'Неправильно. Спробуйте ще раз!',
+      explanation
+    );
+  }
 
-  window.checkMatching = function(correctPattern, encodedExplanation) {
-    const m1 = document.getElementById('match-1').value;
-    const m2 = document.getElementById('match-2').value;
-    const m3 = document.getElementById('match-3').value;
+  function extractAnswerFor(pattern, num) {
+    // Шукає цифру та першу літеру після неї (наприклад, "1А", "1-А", "1:А")
+    const regex = new RegExp(num + '[\\s\\-–—:=]*([А-ЯA-ZІЇЄҐ])', 'i');
+    const m = pattern.match(regex);
+    return m ? normalizeLetter(m[1]) : '';
+  }
+
+  function checkMatching(correctPattern, explanation) {
+    const m1 = normalizeLetter(document.getElementById('match-1').value);
+    const m2 = normalizeLetter(document.getElementById('match-2').value);
+    const m3 = normalizeLetter(document.getElementById('match-3').value);
 
     if (!m1 || !m2 || !m3) {
       alert("Будь ласка, оберіть варіанти для всіх трьох пунктів.");
       return;
     }
 
-    // Витягуємо правильні літери для кожного з пунктів 1, 2, 3
-    const pat = correctPattern.toUpperCase();
-    const c1 = pat.match(/1\s*[-–—:]?\s*([А-Д])/)?.[1] || '';
-    const c2 = pat.match(/2\s*[-–—:]?\s*([А-Д])/)?.[1] || '';
-    const c3 = pat.match(/3\s*[-–—:]?\s*([А-Д])/)?.[1] || '';
+    const raw = (correctPattern || '').trim();
+    let c1 = extractAnswerFor(raw, '1');
+    let c2 = extractAnswerFor(raw, '2');
+    let c3 = extractAnswerFor(raw, '3');
+
+    // Якщо раптом у таблиці вказано просто "АГБ" без цифр
+    if (!c1 && !c2 && !c3) {
+      const letters = raw.replace(/[^А-ЯA-ZІЇЄҐа-яa-zіїєґ]/g, '');
+      if (letters.length >= 3) {
+        c1 = normalizeLetter(letters[0]);
+        c2 = normalizeLetter(letters[1]);
+        c3 = normalizeLetter(letters[2]);
+      }
+    }
 
     let score = 0;
     if (m1 === c1) score++;
     if (m2 === c2) score++;
     if (m3 === c3) score++;
 
-    const explanation = decodeURIComponent(encodedExplanation);
-
     if (score === 3) {
       displayResult('success', 'Чудово! Правильно: 3/3 🎉', explanation);
     } else if (score > 0) {
-      displayResult('warning', `Частково правильно: ${score}/3. Спробуйте знайти помилку!`, explanation);
+      displayResult('warning', `Частково правильно: ${score}/3. Спробуйте ще раз!`, explanation);
     } else {
       displayResult('error', 'Правильних відповідей: 0/3. Спробуйте ще раз!', explanation);
     }
-  };
+  }
 
   function displayResult(status, text, explanation) {
     const box = document.getElementById('result-box');
