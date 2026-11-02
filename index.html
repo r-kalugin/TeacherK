@@ -4,7 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Самоперевірка</title>
+  
+  <!-- Бібліотека Telegram WebApp -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    // Повідомляємо Telegram про готовність негайно, щоб прибрати сірий квадратик
+    try {
+      if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  </script>
+
   <style>
     :root {
       --bg: var(--tg-theme-bg-color, #f4f6f8);
@@ -154,32 +168,22 @@
       <img id="task-img" class="task-image" alt="Умова задачі" />
     </div>
 
-    <div id="loader" class="loader">Ініціалізація форми...</div>
+    <div id="loader" class="loader">Зчитування даних...</div>
     <div id="form-container" style="display: none;"></div>
     <div id="result-box"></div>
   </div>
 </div>
 
 <script>
-  // Примусовий миттєвий сигнал у Telegram для відкриття в'юпорта
-  try {
-    if (window.Telegram && window.Telegram.WebApp) {
-      window.Telegram.WebApp.ready();
-      window.Telegram.WebApp.expand();
-    }
-  } catch (err) {
-    console.error("TG init error", err);
-  }
-
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
 
   function getTaskId() {
-    // 1. Звичайний GET параметр
+    // 1. Звичайні GET параметри
     const urlParams = new URLSearchParams(window.location.search);
     let taskId = urlParams.get('task') || urlParams.get('startapp');
     if (taskId) return taskId.trim();
 
-    // 2. Офіційне поле Telegram
+    // 2. Офіційне поле Telegram initDataUnsafe
     try {
       const tg = window.Telegram?.WebApp;
       if (tg?.initDataUnsafe?.start_param) {
@@ -187,7 +191,7 @@
       }
     } catch (e) {}
 
-    // 3. Аналіз повного URL та хешу
+    // 3. Аналіз повного URL та хешу сторінки
     const fullHref = window.location.href;
     const matchStart = fullHref.match(/[?&#](?:startapp|start_param|tgWebAppStartParam)=([^&#]+)/i);
     if (matchStart && matchStart[1]) {
@@ -236,6 +240,14 @@
   }
 
   async function init() {
+    // Дублюючий виклик ready при запуску логіки
+    if (window.Telegram?.WebApp) {
+      try {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+      } catch (e) {}
+    }
+
     const titleEl = document.getElementById('task-title');
     const loaderEl = document.getElementById('loader');
     const formContainer = document.getElementById('form-container');
@@ -245,17 +257,22 @@
     const taskId = getTaskId();
 
     if (!taskId) {
-      titleEl.innerText = "Помилка запуску";
-      loaderEl.innerHTML = "Не вказано номер завдання.<br><small style='color:grey;'>URL: " + window.location.search + window.location.hash + "</small>";
+      titleEl.innerText = "Помилка";
+      loaderEl.innerHTML = "Не вказано номер завдання.<br><span style='font-size:12px; color:gray;'>Відкрийте посилання з каналу ще раз.</span>";
       return;
     }
 
     loaderEl.innerText = `Завантаження завдання ${taskId}...`;
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
       const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Помилка завантаження таблиці: HTTP " + response.status);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) throw new Error("HTTP " + response.status);
       const csvText = await response.text();
 
       const lines = csvText.split(/\r?\n/).filter(l => l.trim().length > 0);
@@ -278,7 +295,7 @@
 
       if (!task) {
         titleEl.innerText = "Завдання не знайдено";
-        loaderEl.innerText = `Завдання "${taskId}" відсутнє в таблиці.`;
+        loaderEl.innerText = `Завдання "${taskId}" відсутнє в базі даних.`;
         return;
       }
 
@@ -306,7 +323,7 @@
       renderForm(task);
     } catch (e) {
       titleEl.innerText = "Помилка зв'язку";
-      loaderEl.innerText = e.message || "Не вдалося отримати дані.";
+      loaderEl.innerText = "Не вдалося завантажити таблицю. Спробуйте пізніше або відкрийте через браузер.";
     }
   }
 
@@ -486,7 +503,12 @@
     }
   }
 
-  window.addEventListener('load', init);
+  // Запуск одразу після розбору HTML
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 </script>
 </body>
 </html>
