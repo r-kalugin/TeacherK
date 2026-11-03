@@ -549,7 +549,7 @@
     if (type === 'matching') {
       container.innerHTML = `
         <div style="margin-bottom: 14px; font-size: 14px; color: var(--hint);">
-          Доберіть відповідність:
+          Установіть відповідності:
         </div>
         ${[1, 2, 3].map(num => `
           <div class="matching-row">
@@ -601,7 +601,7 @@
       });
     } else if (type === 'single' || type === 'choice') {
       container.innerHTML = `
-        <div style="margin-bottom: 8px; font-size: 14px; color: var(--hint);">Оберіть один правильний варіант:</div>
+        <div style="margin-bottom: 8px; font-size: 14px; color: var(--hint);">Оберіть одну правильну відповідь:</div>
         <div class="single-options-grid">
           ${['А', 'Б', 'В', 'Г', 'Д'].map(letter => `
             <button class="single-btn" id="opt-${letter}" type="button">${letter}</button>
