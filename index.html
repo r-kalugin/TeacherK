@@ -226,6 +226,66 @@
       color: var(--hint);
       padding: 20px;
     }
+
+    /* Блок аналітики для підписників */
+    #stats-box {
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 10px;
+      background-color: rgba(0, 0, 0, 0.03);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      display: none;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .stats-header {
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text);
+    }
+    .stats-summary {
+      color: var(--hint);
+      margin-bottom: 10px;
+    }
+    .stats-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .stat-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .stat-letter {
+      width: 18px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .stat-bar-bg {
+      flex: 1;
+      height: 8px;
+      background-color: rgba(0, 0, 0, 0.08);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .stat-bar-fill {
+      height: 100%;
+      background-color: var(--btn);
+      border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+    .stat-percent {
+      width: 38px;
+      text-align: right;
+      color: var(--hint);
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -241,6 +301,7 @@
     <div id="loader" class="loader">Зчитування даних із таблиці...</div>
     <div id="form-container" style="display: none;"></div>
     <div id="result-box"></div>
+    <div id="stats-box"></div>
     <button class="reset-full-btn" id="btn-reset-full" style="display: none;">🔄 Розв'язати завдання повторно</button>
   </div>
 </div>
@@ -249,6 +310,8 @@
   const SHEET_ID = '1rMrjDLFl08wdqO0vF2wRO1SUI-FmMULUUklqaUtP7Fg';
   const SHEET_GID = '121652371'; 
   const SALT = "TeacherK_Secret_2026_"; 
+  // Вставте URL вашого розгорнутого Web App з Apps Script:
+  const LOG_URL = "ВСТАВТЕ_ВАШ_URL_З_APPS_SCRIPT"; 
 
   let lockedCorrectLetters = [];
   let currentTask = null;
@@ -502,10 +565,12 @@
     attemptsCount = 0;
 
     const resultBox = document.getElementById('result-box');
+    const statsBox = document.getElementById('stats-box');
     const btnResetFull = document.getElementById('btn-reset-full');
     const btnCheck = document.getElementById('btn-check');
 
     if (resultBox) resultBox.style.display = 'none';
+    if (statsBox) statsBox.style.display = 'none';
     if (btnResetFull) btnResetFull.style.display = 'none';
 
     if (currentTask.task_type === 'matching') {
@@ -694,6 +759,69 @@
       .trim();
   }
 
+  /* Аналітика: надсилання відповіді на вебхук та відображення статистики */
+  async function sendLogAndDisplayStats(taskId, status, userAns, taskType) {
+    if (!LOG_URL || LOG_URL.includes("ВСТАВТЕ_ВАШ_URL")) return;
+
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user || {};
+    const payload = {
+      task_id: taskId,
+      user_id: tgUser.id || "Anonymous",
+      username: tgUser.username ? "@" + tgUser.username : "",
+      name: [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" "),
+      status: status,
+      attempts: attemptsCount,
+      answer: userAns
+    };
+
+    try {
+      const res = await fetch(LOG_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data && data.result === "success" && data.stats) {
+        renderStatsUI(data.stats, taskType);
+      }
+    } catch (e) {
+      console.error("Log fetch error", e);
+    }
+  }
+
+  function renderStatsUI(stats, taskType) {
+    const statsBox = document.getElementById('stats-box');
+    if (!statsBox || !stats) return;
+
+    let html = `
+      <div class="stats-header">📊 Статистика відповідей</div>
+      <div class="stats-summary">
+        Розв'язали: <strong>${stats.total}</strong> | З 1-ї спроби: <strong>${stats.firstAttemptPercent}%</strong>
+      </div>
+    `;
+
+    if ((taskType === 'single' || taskType === 'choice') && stats.distribution) {
+      html += `<div class="stats-bars">`;
+      const options = ['А', 'Б', 'В', 'Г', 'Д'];
+      options.forEach(opt => {
+        const percent = stats.distribution[opt] || 0;
+        html += `
+          <div class="stat-row">
+            <span class="stat-letter">${opt}</span>
+            <div class="stat-bar-bg">
+              <div class="stat-bar-fill" style="width: ${percent}%;"></div>
+            </div>
+            <span class="stat-percent">${percent}%</span>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    }
+
+    statsBox.innerHTML = html;
+    statsBox.style.display = 'block';
+  }
+
   async function checkSingle(correctHash, explanation, taskId, triggerHaptic) {
     const btnCheck = document.getElementById('btn-check');
     const btnResetFull = document.getElementById('btn-reset-full');
@@ -738,6 +866,9 @@
         value: selectedSingleChoice,
         attempts: attemptsCount
       });
+      if (triggerHaptic) {
+        sendLogAndDisplayStats(taskId, isCorrect ? 'success' : 'error', userAns, 'single');
+      }
     }
 
     const successMsg = attemptsCount === 1 
@@ -779,6 +910,9 @@
         value: val,
         attempts: attemptsCount
       });
+      if (triggerHaptic) {
+        sendLogAndDisplayStats(taskId, isCorrect ? 'success' : 'error', cleanUser, 'text');
+      }
     }
 
     const successMsg = attemptsCount === 1 
@@ -825,13 +959,11 @@
       });
     }
 
-    // Отримуємо 3 хеші з таблиці
     const parts = (correctHashesRaw || '').split(',').map(s => s.trim());
     const h1 = parts[0] || '';
     const h2 = parts[1] || '';
     const h3 = parts[2] || '';
 
-    // Обчислюємо хеші для кожного пункту окремо
     const userH1 = await computeHash(taskId, "1-" + m1);
     const userH2 = await computeHash(taskId, "2-" + m2);
     const userH3 = await computeHash(taskId, "3-" + m3);
@@ -860,6 +992,11 @@
     applyStatus(el3, is3Correct);
 
     let score = (is1Correct ? 1 : 0) + (is2Correct ? 1 : 0) + (is3Correct ? 1 : 0);
+    const statusVal = score === 3 ? 'success' : (score > 0 ? 'partial' : 'error');
+
+    if (taskId && triggerHaptic) {
+      sendLogAndDisplayStats(taskId, statusVal, `1-${m1} 2-${m2} 3-${m3}`, 'matching');
+    }
 
     if (score === 3) {
       btnCheck.style.display = 'none';
