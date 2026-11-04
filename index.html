@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <!-- Іконка вкладки (favicon) -->
-<link rel="icon" type="image/png" href="Фавікон.png">
+  <link rel="icon" type="image/png" href="Фавікон.png">
   <title>Самоперевірка</title>
   
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -286,31 +286,31 @@
     } catch (e) {}
   }
 
-  function loadUserAnswer(taskId, callback) {
-    let localData = null;
-    try {
-      const raw = localStorage.getItem('saved_ans_' + taskId);
-      if (raw) localData = JSON.parse(raw);
-    } catch (e) {}
+  function loadUserAnswerPromise(taskId) {
+    return new Promise((resolve) => {
+      let localData = null;
+      try {
+        const raw = localStorage.getItem('saved_ans_' + taskId);
+        if (raw) localData = JSON.parse(raw);
+      } catch (e) {}
 
-    try {
       const cloud = window.Telegram?.WebApp?.CloudStorage;
       if (cloud && cloud.getItem) {
         const safeKey = ('ans_' + taskId).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 120);
         cloud.getItem(safeKey, (err, val) => {
           if (!err && val) {
             try {
-              callback(JSON.parse(val));
+              resolve(JSON.parse(val));
               return;
             } catch (e) {}
           }
-          callback(localData);
+          resolve(localData);
         });
         return;
       }
-    } catch (e) {}
 
-    callback(localData);
+      resolve(localData);
+    });
   }
 
   function clearUserAnswer(taskId) {
@@ -360,6 +360,29 @@
     return null;
   }
 
+  function updateTabTitle(taskId) {
+    if (!taskId) {
+      document.title = "Самоперевірка | Teacher Kalugin";
+      return;
+    }
+    
+    const parts = taskId.split('_');
+    let datePart = parts[0];
+    const numPart = parts[1];
+
+    const dParts = datePart.split('.');
+    if (dParts.length === 3 && dParts[2].length === 2) {
+      dParts[2] = "20" + dParts[2];
+      datePart = dParts.join('.');
+    }
+
+    if (numPart) {
+      document.title = `Задача дня №${numPart} | ${datePart}`;
+    } else {
+      document.title = `Задача дня | ${datePart}`;
+    }
+  }
+
   function parseCSVLine(line) {
     const result = [];
     let cur = '';
@@ -407,31 +430,6 @@
 
     const taskId = getTaskId();
     updateTabTitle(taskId);
-
-function updateTabTitle(taskId) {
-  if (!taskId) {
-    document.title = "Самоперевірка | Teacher Kalugin";
-    return;
-  }
-  
-  const parts = taskId.split('_');
-  let datePart = parts[0];
-  const numPart = parts[1]; // якщо немає підкреслення, буде undefined
-
-  // Перетворюємо рік 26 -> 2026
-  const dParts = datePart.split('.');
-  if (dParts.length === 3 && dParts[2].length === 2) {
-    dParts[2] = "20" + dParts[2];
-    datePart = dParts.join('.');
-  }
-
-  // Якщо є номер — пишемо "Задача дня №X | дата", якщо немає — "Задача дня | дата"
-  if (numPart) {
-    document.title = `Задача дня №${numPart} | ${datePart}`;
-  } else {
-    document.title = `Задача дня | ${datePart}`;
-  }
-}
 
     if (!taskId) {
       titleEl.innerText = "Помилка";
@@ -495,7 +493,7 @@ function updateTabTitle(taskId) {
 
       document.getElementById('btn-reset-full').addEventListener('click', fullResetTask);
 
-      renderForm(task);
+      await renderForm(task);
     } catch (e) {
       titleEl.innerText = "Помилка зв'язку";
       loaderEl.innerText = "Не вдалося отримати дані з таблиці.";
@@ -570,7 +568,7 @@ function updateTabTitle(taskId) {
     }
   }
 
-  function renderForm(task) {
+  async function renderForm(task) {
     const container = document.getElementById('form-container');
     const type = (task.task_type || '').trim();
 
@@ -614,19 +612,18 @@ function updateTabTitle(taskId) {
         checkMatching(task.answer_hash, task.explanation, task.task_id, true);
       });
 
-      loadUserAnswer(task.task_id, (saved) => {
-        if (saved && saved.type === 'matching') {
-          attemptsCount = saved.attempts || 1;
-          const s1 = document.getElementById('match-1');
-          const s2 = document.getElementById('match-2');
-          const s3 = document.getElementById('match-3');
-          if (s1 && saved.val1) s1.value = saved.val1;
-          if (s2 && saved.val2) s2.value = saved.val2;
-          if (s3 && saved.val3) s3.value = saved.val3;
-          updateDisabledOptions();
-          checkMatching(task.answer_hash, task.explanation, task.task_id, false);
-        }
-      });
+      const saved = await loadUserAnswerPromise(task.task_id);
+      if (saved && saved.type === 'matching') {
+        attemptsCount = saved.attempts || 1;
+        const s1 = document.getElementById('match-1');
+        const s2 = document.getElementById('match-2');
+        const s3 = document.getElementById('match-3');
+        if (s1 && saved.val1) s1.value = saved.val1;
+        if (s2 && saved.val2) s2.value = saved.val2;
+        if (s3 && saved.val3) s3.value = saved.val3;
+        updateDisabledOptions();
+        await checkMatching(task.answer_hash, task.explanation, task.task_id, false);
+      }
     } else if (type === 'single' || type === 'choice') {
       container.innerHTML = `
         <div style="margin-bottom: 8px; font-size: 14px; color: var(--hint);">Оберіть одну правильну відповідь:</div>
@@ -664,15 +661,14 @@ function updateTabTitle(taskId) {
         checkSingle(task.answer_hash, task.explanation, task.task_id, true);
       });
 
-      loadUserAnswer(task.task_id, (saved) => {
-        if (saved && saved.type === 'single' && saved.value) {
-          attemptsCount = saved.attempts || 1;
-          selectedSingleChoice = saved.value;
-          const b = document.getElementById(`opt-${saved.value}`);
-          if (b) b.classList.add('selected');
-          checkSingle(task.answer_hash, task.explanation, task.task_id, false);
-        }
-      });
+      const saved = await loadUserAnswerPromise(task.task_id);
+      if (saved && saved.type === 'single' && saved.value) {
+        attemptsCount = saved.attempts || 1;
+        selectedSingleChoice = saved.value;
+        const b = document.getElementById(`opt-${saved.value}`);
+        if (b) b.classList.add('selected');
+        await checkSingle(task.answer_hash, task.explanation, task.task_id, false);
+      }
     } else {
       container.innerHTML = `
         <div style="margin-bottom: 10px; font-size: 14px; color: var(--hint);">Уведіть відповідь:</div>
@@ -690,16 +686,15 @@ function updateTabTitle(taskId) {
         checkText(task.answer_hash, task.explanation, task.task_id, true);
       });
 
-      loadUserAnswer(task.task_id, (saved) => {
-        if (saved && saved.type === 'text' && saved.value !== undefined) {
-          attemptsCount = saved.attempts || 1;
-          const inp = document.getElementById('text-answer');
-          if (inp) {
-            inp.value = saved.value;
-            checkText(task.answer_hash, task.explanation, task.task_id, false);
-          }
+      const saved = await loadUserAnswerPromise(task.task_id);
+      if (saved && saved.type === 'text' && saved.value !== undefined) {
+        attemptsCount = saved.attempts || 1;
+        const inp = document.getElementById('text-answer');
+        if (inp) {
+          inp.value = saved.value;
+          await checkText(task.answer_hash, task.explanation, task.task_id, false);
         }
-      });
+      }
     }
   }
 
@@ -722,18 +717,18 @@ function updateTabTitle(taskId) {
       .trim();
   }
 
-  async function checkSingle(correctHash, explanation, taskId, triggerHaptic) {
+  async function checkSingle(correctHash, explanation, taskId, isUserAction) {
     const btnCheck = document.getElementById('btn-check');
     const btnResetFull = document.getElementById('btn-reset-full');
 
     if (!selectedSingleChoice) {
-      if (triggerHaptic) alert("Будь ласка, оберіть варіант відповіді.");
+      if (isUserAction) alert("Будь ласка, оберіть варіант відповіді.");
       return;
     }
 
     const userAns = normalizeLetter(selectedSingleChoice);
     const userHash = await computeHash(taskId, userAns);
-    const isCorrect = (userHash === correctHash);
+    const isCorrect = (userHash === (correctHash || '').trim());
 
     const activeBtn = document.getElementById(`opt-${selectedSingleChoice}`);
 
@@ -760,7 +755,7 @@ function updateTabTitle(taskId) {
       if (btnResetFull) btnResetFull.style.display = 'none';
     }
 
-    if (taskId) {
+    if (isUserAction && taskId) {
       saveUserAnswer(taskId, {
         type: 'single',
         value: selectedSingleChoice,
@@ -776,11 +771,11 @@ function updateTabTitle(taskId) {
       isCorrect ? 'success' : 'error',
       isCorrect ? successMsg : `Ця відповідь неправильна. Спробуйте ще раз. <span class="attempts-badge">Спроба: ${attemptsCount}</span>`,
       explanation,
-      triggerHaptic
+      isUserAction
     );
   }
 
-  async function checkText(correctHash, explanation, taskId, triggerHaptic) {
+  async function checkText(correctHash, explanation, taskId, isUserAction) {
     const inputEl = document.getElementById('text-answer');
     const btnCheck = document.getElementById('btn-check');
     const btnResetFull = document.getElementById('btn-reset-full');
@@ -789,7 +784,7 @@ function updateTabTitle(taskId) {
     const cleanUser = cleanString(val);
 
     const userHash = await computeHash(taskId, cleanUser);
-    const isCorrect = (userHash === correctHash);
+    const isCorrect = (userHash === (correctHash || '').trim());
 
     if (isCorrect) {
       inputEl.className = 'input-field input-locked';
@@ -801,7 +796,7 @@ function updateTabTitle(taskId) {
       if (btnResetFull) btnResetFull.style.display = 'none';
     }
 
-    if (taskId && val) {
+    if (isUserAction && taskId && val) {
       saveUserAnswer(taskId, {
         type: 'text',
         value: val,
@@ -817,11 +812,11 @@ function updateTabTitle(taskId) {
       isCorrect ? 'success' : 'error',
       isCorrect ? successMsg : `Ця відповідь неправильна. Спробуйте ще раз. <span class="attempts-badge">Спроба: ${attemptsCount}</span>`,
       explanation,
-      triggerHaptic
+      isUserAction
     );
   }
 
-  async function checkMatching(correctHashesRaw, explanation, taskId, triggerHaptic) {
+  async function checkMatching(correctHashesRaw, explanation, taskId, isUserAction) {
     const el1 = document.getElementById('match-1');
     const el2 = document.getElementById('match-2');
     const el3 = document.getElementById('match-3');
@@ -834,16 +829,16 @@ function updateTabTitle(taskId) {
     const m3 = normalizeLetter(el3.value);
 
     if (!m1 || !m2 || !m3) {
-      if (triggerHaptic) alert("Будь ласка, оберіть варіанти для всіх трьох пунктів.");
+      if (isUserAction) alert("Будь ласка, оберіть варіанти для всіх трьох пунктів.");
       return;
     }
 
     if (m1 === m2 || m1 === m3 || m2 === m3) {
-      if (triggerHaptic) alert("Усі три варіанти відповіді мають бути різними!");
+      if (isUserAction) alert("Усі три варіанти відповіді мають бути різними!");
       return;
     }
 
-    if (taskId) {
+    if (isUserAction && taskId) {
       saveUserAnswer(taskId, {
         type: 'matching',
         val1: el1.value,
@@ -897,15 +892,15 @@ function updateTabTitle(taskId) {
         ? 'Бездоганно! Правильні відповідності встановлено з 1-ї спроби.' 
         : `Саме так! Правильно: 3/3. <span class="attempts-badge">Використано спроб: ${attemptsCount}</span>`;
 
-      displayResult('success', successMsg, explanation, triggerHaptic);
+      displayResult('success', successMsg, explanation, isUserAction);
     } else {
       btnCheck.style.display = 'none';
       if (btnResetFull) btnResetFull.style.display = 'none';
 
       if (score > 0) {
-        displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь. <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
+        displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь. <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, isUserAction);
       } else {
-        displayResult('error', `Правильних відповідей: 0/3. Спробуйте ще раз. <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, triggerHaptic);
+        displayResult('error', `Правильних відповідей: 0/3. Спробуйте ще раз. <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, isUserAction);
       }
     }
 
