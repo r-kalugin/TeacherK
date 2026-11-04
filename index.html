@@ -419,7 +419,6 @@
       return;
     }
 
-    // Встановлюємо правильний заголовок одразу з ID
     let displayId = taskId;
     if (displayId.includes('.26_')) {
       displayId = displayId.replace('.26_', '.2026_');
@@ -876,11 +875,12 @@
       displayResult('success', successMsg, explanation, isUserAction);
     } else {
       btnCheck.style.display = 'none';
-      if (btnResetFull) btnResetFull.style.display = 'none';
 
       if (score > 0) {
+        if (btnResetFull) btnResetFull.style.display = 'none';
         displayResult('warning', `Частково правильно: ${score}/3. Уточніть Вашу відповідь. <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, isUserAction);
       } else {
+        if (btnResetFull) btnResetFull.style.display = 'block';
         displayResult('error', `Правильних відповідей: 0/3. Спробуйте ще раз. <span class="attempts-badge">Спроба: ${attemptsCount}</span>`, explanation, isUserAction);
       }
     }
