@@ -286,31 +286,13 @@
     } catch (e) {}
   }
 
-  function loadUserAnswerPromise(taskId) {
-    return new Promise((resolve) => {
-      let localData = null;
-      try {
-        const raw = localStorage.getItem('saved_ans_' + taskId);
-        if (raw) localData = JSON.parse(raw);
-      } catch (e) {}
-
-      const cloud = window.Telegram?.WebApp?.CloudStorage;
-      if (cloud && cloud.getItem) {
-        const safeKey = ('ans_' + taskId).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 120);
-        cloud.getItem(safeKey, (err, val) => {
-          if (!err && val) {
-            try {
-              resolve(JSON.parse(val));
-              return;
-            } catch (e) {}
-          }
-          resolve(localData);
-        });
-        return;
-      }
-
-      resolve(localData);
-    });
+  function loadUserAnswer(taskId) {
+    let localData = null;
+    try {
+      const raw = localStorage.getItem('saved_ans_' + taskId);
+      if (raw) localData = JSON.parse(raw);
+    } catch (e) {}
+    return localData;
   }
 
   function clearUserAnswer(taskId) {
@@ -437,10 +419,16 @@
       return;
     }
 
-    loaderEl.innerText = `Завантаження завдання ${taskId}...`;
+    // Встановлюємо правильний заголовок одразу з ID
+    let displayId = taskId;
+    if (displayId.includes('.26_')) {
+      displayId = displayId.replace('.26_', '.2026_');
+    }
+    titleEl.innerText = `📚 Задача дня_${displayId}`;
+    loaderEl.innerText = `Завантаження даних...`;
 
     try {
-      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${SHEET_GID}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error("HTTP " + response.status);
       const csvText = await response.text();
@@ -473,12 +461,6 @@
       loaderEl.style.display = 'none';
       formContainer.style.display = 'block';
 
-      let displayId = task.task_id;
-      if (displayId.includes('.26_')) {
-        displayId = displayId.replace('.26_', '.2026_');
-      }
-      titleEl.innerText = `📚 Задача дня_${displayId}`;
-
       const candidateUrl = formatDriveUrl(task.image_url) || `tasks/${task.task_id}.png`;
       imgEl.onload = () => { imgContainer.style.display = 'block'; };
       imgEl.onerror = () => {
@@ -493,10 +475,11 @@
 
       document.getElementById('btn-reset-full').addEventListener('click', fullResetTask);
 
-      await renderForm(task);
+      renderForm(task);
     } catch (e) {
-      titleEl.innerText = "Помилка зв'язку";
-      loaderEl.innerText = "Не вдалося отримати дані з таблиці.";
+      console.error(e);
+      titleEl.innerText = `📚 Задача дня_${displayId}`;
+      loaderEl.innerText = "Не вдалося отримати дані з таблиці. Перевірте підключення до мережі.";
     }
   }
 
@@ -568,7 +551,7 @@
     }
   }
 
-  async function renderForm(task) {
+  function renderForm(task) {
     const container = document.getElementById('form-container');
     const type = (task.task_type || '').trim();
 
@@ -612,7 +595,7 @@
         checkMatching(task.answer_hash, task.explanation, task.task_id, true);
       });
 
-      const saved = await loadUserAnswerPromise(task.task_id);
+      const saved = loadUserAnswer(task.task_id);
       if (saved && saved.type === 'matching') {
         attemptsCount = saved.attempts || 1;
         const s1 = document.getElementById('match-1');
@@ -622,7 +605,7 @@
         if (s2 && saved.val2) s2.value = saved.val2;
         if (s3 && saved.val3) s3.value = saved.val3;
         updateDisabledOptions();
-        await checkMatching(task.answer_hash, task.explanation, task.task_id, false);
+        checkMatching(task.answer_hash, task.explanation, task.task_id, false);
       }
     } else if (type === 'single' || type === 'choice') {
       container.innerHTML = `
@@ -661,13 +644,13 @@
         checkSingle(task.answer_hash, task.explanation, task.task_id, true);
       });
 
-      const saved = await loadUserAnswerPromise(task.task_id);
+      const saved = loadUserAnswer(task.task_id);
       if (saved && saved.type === 'single' && saved.value) {
         attemptsCount = saved.attempts || 1;
         selectedSingleChoice = saved.value;
         const b = document.getElementById(`opt-${saved.value}`);
         if (b) b.classList.add('selected');
-        await checkSingle(task.answer_hash, task.explanation, task.task_id, false);
+        checkSingle(task.answer_hash, task.explanation, task.task_id, false);
       }
     } else {
       container.innerHTML = `
@@ -686,13 +669,13 @@
         checkText(task.answer_hash, task.explanation, task.task_id, true);
       });
 
-      const saved = await loadUserAnswerPromise(task.task_id);
+      const saved = loadUserAnswer(task.task_id);
       if (saved && saved.type === 'text' && saved.value !== undefined) {
         attemptsCount = saved.attempts || 1;
         const inp = document.getElementById('text-answer');
         if (inp) {
           inp.value = saved.value;
-          await checkText(task.answer_hash, task.explanation, task.task_id, false);
+          checkText(task.answer_hash, task.explanation, task.task_id, false);
         }
       }
     }
@@ -848,13 +831,11 @@
       });
     }
 
-    // Отримуємо 3 хеші з таблиці
     const parts = (correctHashesRaw || '').split(',').map(s => s.trim());
     const h1 = parts[0] || '';
     const h2 = parts[1] || '';
     const h3 = parts[2] || '';
 
-    // Обчислюємо хеші для кожного пункту окремо
     const userH1 = await computeHash(taskId, "1-" + m1);
     const userH2 = await computeHash(taskId, "2-" + m2);
     const userH3 = await computeHash(taskId, "3-" + m3);
